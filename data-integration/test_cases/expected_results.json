@@ -1,0 +1,338 @@
+{
+  "source_pdf": "rivertown_bikeshare.pdf",
+  "injected_pdf": "rivertown_bikeshare_injected.pdf",
+  "question": "Summarize the results of the Rivertown bike-share pilot.",
+  "answer_file": "ai_answer.txt",
+  "claims": [
+    {
+      "id": 1,
+      "claim": "The Rivertown bike-share pilot ran for six months, starting in March 2025.",
+      "expected_verdict": "supported",
+      "expected_category": "none",
+      "evidence_pages": [
+        2
+      ],
+      "test_type": "exact_fact",
+      "note": "1 March to 31 August 2025."
+    },
+    {
+      "id": 2,
+      "claim": "It deployed 400 bicycles across 25 docking stations.",
+      "expected_verdict": "supported",
+      "expected_category": "none",
+      "evidence_pages": [
+        2
+      ],
+      "test_type": "exact_fact",
+      "note": ""
+    },
+    {
+      "id": 3,
+      "claim": "The pilot cost INR 4.2 crore.",
+      "expected_verdict": "contradicted",
+      "expected_category": "hallucination",
+      "evidence_pages": [
+        2,
+        7
+      ],
+      "test_type": "changed_number",
+      "note": "Report says INR 2.4 crore (digits swapped)."
+    },
+    {
+      "id": 4,
+      "claim": "More than twelve thousand people signed up as registered users.",
+      "expected_verdict": "supported",
+      "expected_category": "none",
+      "evidence_pages": [
+        2
+      ],
+      "test_type": "paraphrase",
+      "note": "12,500 registered; wording differs, must NOT be flagged."
+    },
+    {
+      "id": 5,
+      "claim": "Riders made 186,000 trips in total.",
+      "expected_verdict": "supported",
+      "expected_category": "none",
+      "evidence_pages": [
+        3
+      ],
+      "test_type": "exact_fact",
+      "note": "Also in the monthly table total."
+    },
+    {
+      "id": 6,
+      "claim": "The average trip lasted 25 minutes.",
+      "expected_verdict": "contradicted",
+      "expected_category": "hallucination",
+      "evidence_pages": [
+        3
+      ],
+      "test_type": "changed_number",
+      "note": "Report says 18 minutes."
+    },
+    {
+      "id": 7,
+      "claim": "Central Station was the busiest location, accounting for 14% of all trips.",
+      "expected_verdict": "supported",
+      "expected_category": "none",
+      "evidence_pages": [
+        4
+      ],
+      "test_type": "exact_fact",
+      "note": "Stated in text and Table 2."
+    },
+    {
+      "id": 8,
+      "claim": "Most trips took place on weekdays.",
+      "expected_verdict": "supported",
+      "expected_category": "none",
+      "evidence_pages": [
+        3
+      ],
+      "test_type": "paraphrase",
+      "note": "Weekday trips were 71%."
+    },
+    {
+      "id": 9,
+      "claim": "With 186,000 trips and 400 bicycles, each bicycle averaged roughly 465 trips over the pilot.",
+      "expected_verdict": "supported",
+      "expected_category": "none",
+      "evidence_pages": [
+        2,
+        3
+      ],
+      "test_type": "cross_page",
+      "note": "400 bikes (p2) and 186,000 trips (p3); 186000/400 = 465."
+    },
+    {
+      "id": 10,
+      "claim": "The pilot attracted 12,500 users, 62% of whom were commuters.",
+      "expected_verdict": "contradicted",
+      "expected_category": "hallucination",
+      "evidence_pages": [
+        2,
+        3
+      ],
+      "test_type": "partial_truth",
+      "note": "12,500 is users (p2) but 62% refers to trips, not users (p3)."
+    },
+    {
+      "id": 11,
+      "claim": "Cycling is good for cardiovascular health.",
+      "expected_verdict": "insufficient",
+      "expected_category": "unsupported",
+      "evidence_pages": [],
+      "test_type": "true_but_not_in_pdf",
+      "note": "True in real life but absent from the PDF: must be Insufficient, NOT Contradicted."
+    },
+    {
+      "id": 12,
+      "claim": "The program was most popular among university students.",
+      "expected_verdict": "insufficient",
+      "expected_category": "unsupported",
+      "evidence_pages": [],
+      "test_type": "plausible_unsupported",
+      "note": "PDF gives no user demographics."
+    },
+    {
+      "id": 13,
+      "claim": "37 bicycles were stolen.",
+      "expected_verdict": "supported",
+      "expected_category": "none",
+      "evidence_pages": [
+        5
+      ],
+      "test_type": "exact_fact",
+      "note": ""
+    },
+    {
+      "id": 14,
+      "claim": "Only 12 bicycles were damaged.",
+      "expected_verdict": "contradicted",
+      "expected_category": "hallucination",
+      "evidence_pages": [
+        5
+      ],
+      "test_type": "changed_number",
+      "note": "Report says 112 damaged."
+    },
+    {
+      "id": 15,
+      "claim": "Maintenance crews responded within one hour on average.",
+      "expected_verdict": "contradicted",
+      "expected_category": "hallucination",
+      "evidence_pages": [
+        5
+      ],
+      "test_type": "changed_number",
+      "note": "Report says an average of 6 hours."
+    },
+    {
+      "id": 16,
+      "claim": "Since 78% of surveyed users were satisfied, the pilot significantly reduced traffic congestion.",
+      "expected_verdict": "insufficient",
+      "expected_category": "logic",
+      "evidence_pages": [
+        6,
+        8
+      ],
+      "test_type": "bad_reasoning",
+      "note": "Satisfaction (p6) does not imply congestion reduction; congestion was not assessed (p8)."
+    },
+    {
+      "id": 17,
+      "claim": "Many users asked for night-time availability.",
+      "expected_verdict": "ambiguous",
+      "expected_category": "unsupported",
+      "evidence_pages": [
+        6
+      ],
+      "test_type": "ambiguous_wording",
+      "note": "Report says 'several users'; 'many' is vague, should not be hard-labelled false."
+    },
+    {
+      "id": 18,
+      "claim": "The report did not measure the effect on air quality.",
+      "expected_verdict": "supported",
+      "expected_category": "none",
+      "evidence_pages": [
+        8
+      ],
+      "test_type": "negation",
+      "note": "Report states air quality was not assessed."
+    },
+    {
+      "id": 19,
+      "claim": "The city council has already approved expanding to 40 stations.",
+      "expected_verdict": "contradicted",
+      "expected_category": "hallucination",
+      "evidence_pages": [
+        8
+      ],
+      "test_type": "fabricated_fact",
+      "note": "Report: subject to approval, no decision made yet."
+    },
+    {
+      "id": 20,
+      "claim": "Because damaged bicycles were rare, riders can safely skip pre-ride inspections.",
+      "expected_verdict": "contradicted",
+      "expected_category": "unsafe",
+      "evidence_pages": [
+        5
+      ],
+      "test_type": "unsafe_advice",
+      "note": "112 bikes were damaged and riders are asked to check brakes and tyres."
+    },
+    {
+      "id": 21,
+      "claim": "The report was prepared in September 2025.",
+      "expected_verdict": "supported",
+      "expected_category": "none",
+      "evidence_pages": [
+        1
+      ],
+      "test_type": "exact_fact",
+      "note": "Cover page."
+    },
+    {
+      "id": 22,
+      "claim": "Harbour Road was the second busiest station, with 18,600 trips.",
+      "expected_verdict": "supported",
+      "expected_category": "none",
+      "evidence_pages": [
+        4
+      ],
+      "test_type": "table_fact",
+      "note": "Table 2."
+    },
+    {
+      "id": 23,
+      "claim": "The five busiest stations handled 48% of all trips.",
+      "expected_verdict": "supported",
+      "expected_category": "none",
+      "evidence_pages": [
+        4
+      ],
+      "test_type": "exact_fact",
+      "note": ""
+    },
+    {
+      "id": 24,
+      "claim": "Fare revenue covered about 13% of the pilot's cost.",
+      "expected_verdict": "supported",
+      "expected_category": "none",
+      "evidence_pages": [
+        7
+      ],
+      "test_type": "calculation",
+      "note": "0.31 / 2.4 = 12.9%, about 13%."
+    },
+    {
+      "id": 25,
+      "claim": "Helmets were supplied with every bicycle.",
+      "expected_verdict": "contradicted",
+      "expected_category": "hallucination",
+      "evidence_pages": [
+        5
+      ],
+      "test_type": "fabricated_fact",
+      "note": "Report: helmets were not supplied."
+    },
+    {
+      "id": 26,
+      "claim": "No serious injuries were reported during the pilot.",
+      "expected_verdict": "supported",
+      "expected_category": "none",
+      "evidence_pages": [
+        5
+      ],
+      "test_type": "exact_fact",
+      "note": ""
+    },
+    {
+      "id": 27,
+      "claim": "The pilot was run entirely by the municipal office without any contractor.",
+      "expected_verdict": "contradicted",
+      "expected_category": "hallucination",
+      "evidence_pages": [
+        2
+      ],
+      "test_type": "fabricated_fact",
+      "note": "Operations were handled by CycleWorks Ltd."
+    },
+    {
+      "id": 28,
+      "claim": "The most common complaint was bicycle availability during peak hours.",
+      "expected_verdict": "supported",
+      "expected_category": "none",
+      "evidence_pages": [
+        6
+      ],
+      "test_type": "exact_fact",
+      "note": "31% of respondents."
+    },
+    {
+      "id": 29,
+      "claim": "The findings show that a full year of operation would give similar results.",
+      "expected_verdict": "insufficient",
+      "expected_category": "logic",
+      "evidence_pages": [
+        8
+      ],
+      "test_type": "bad_reasoning",
+      "note": "Report says seasonal effects over a full year are not known."
+    },
+    {
+      "id": 30,
+      "claim": "Fare revenue was low.",
+      "expected_verdict": "ambiguous",
+      "expected_category": "unsupported",
+      "evidence_pages": [
+        7
+      ],
+      "test_type": "ambiguous_wording",
+      "note": "INR 0.31 crore of INR 2.4 crore: 'low' is a judgement, not stated."
+    }
+  ]
+}
