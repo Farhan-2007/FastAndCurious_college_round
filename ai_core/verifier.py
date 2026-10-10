@@ -6,9 +6,10 @@ caller's own passage data.
 """
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor
 
-from llm_client import LLMClient, LLMError
-from schemas import (CATEGORIES, VERDICTS, ClaimResult, EvidenceQuote,
+from .llm_client import LLMClient, LLMError
+from .schemas import (CATEGORIES, VERDICTS, ClaimResult, EvidenceQuote,
                       coerce_claims, coerce_passages)
 
 log = logging.getLogger(__name__)
@@ -41,7 +42,7 @@ Reply with ONLY valid JSON:
 Return exactly one result per claim."""
 
 
-def verify_claims(claims, evidence, client: LLMClient = None) -> dict:
+def verify_claims_batch(claims, evidence, client: LLMClient = None) -> dict:
     """claims:   list of str | {'id','text'} | Claim
     evidence: list of str | {'text','page'?,'source'?} | EvidencePassage
     Returns {"results": [ClaimResult as dict, ...], "warnings": [str, ...]}.
@@ -96,6 +97,77 @@ def verify_claims(claims, evidence, client: LLMClient = None) -> dict:
             results.append(_failed(c, f"Verification failed: {e}"))
     return {"results": [r.to_dict() for r in results], "warnings": warnings}
 
+MAX_WORKERS = 4  # parallel LLM calls (one per claim)
+
+
+def verify_claims(claims, evidence_by_claim, client: LLMClient = None) -> dict:
+    """Verify each claim using ONLY the evidence supplied for that claim.
+
+    claims:            [{"id": int, "text": str}, ...]            (from decompose_claims)
+    evidence_by_claim: {claim_id: [{"page": int, "text": str}]}   (from retrieve_evidence)
+                       (string keys such as "1" also work; a missing key = no evidence)
+    Returns {"claims": [{"id", "text", "verdict", "category", "confidence",
+                         "explanation", "evidence": [{"quote", "page"}]}, ...]}
+    in the same order as `claims`. No retrieval happens here, and there is no global
+    state. If verification could not run for a claim, that entry also carries an
+    "error" string (verdict is then "ambiguous", confidence 0.0) - treat it as
+    "not verified". Raises ValueError only for malformed `claims`/`evidence_by_claim`."""
+    try:  # imported here: evidence_analyzer itself imports this module
+        from .evidence_analyzer import analyze_claim
+    except ImportError:
+        from evidence_analyzer import analyze_claim
+
+    items = _check_claims(claims)
+    if not isinstance(evidence_by_claim, dict):
+        raise ValueError("evidence_by_claim must be a dict keyed by claim id")
+    client = client or LLMClient()
+
+    def one(c):
+        passages = evidence_by_claim.get(c["id"])
+        if passages is None:
+            passages = evidence_by_claim.get(str(c["id"]))
+        try:
+            r = analyze_claim(c["text"], passages or [], client=client, claim_id=c["id"])
+        except Exception as e:  # bad passage data etc. -> reported, never faked
+            log.warning("claim %s failed: %s", c["id"], e)
+            return _contract(c, {"verdict": "ambiguous", "category": "none",
+                                 "confidence": 0.0, "evidence": [],
+                                 "explanation": "Could not verify this claim.",
+                                 "error": f"Verification failed: {e}"})
+        return _contract(c, r)
+
+    with ThreadPoolExecutor(max_workers=min(MAX_WORKERS, len(items) or 1)) as pool:
+        return {"claims": list(pool.map(one, items))}
+
+
+def _check_claims(claims) -> list:
+    if not isinstance(claims, (list, tuple)):
+        raise ValueError("claims must be a list of {'id', 'text'} dicts")
+    out, ids = [], set()
+    for c in claims:
+        try:
+            if isinstance(c["id"], bool):
+                raise TypeError
+            cid, text = int(c["id"]), c["text"]
+        except (KeyError, TypeError, ValueError):
+            raise ValueError(f"each claim needs an integer 'id' and a 'text': {c!r}")
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError(f"claim {cid} has empty or non-string text")
+        if cid in ids:
+            raise ValueError(f"duplicate claim id {cid}")
+        ids.add(cid)
+        out.append({"id": cid, "text": text})
+    return out
+
+
+def _contract(c, r) -> dict:
+    out = {"id": c["id"], "text": c["text"], "verdict": r["verdict"],
+           "category": r["category"], "confidence": r["confidence"],
+           "explanation": r["explanation"],
+           "evidence": [{"quote": q["quote"], "page": q["page"]} for q in r["evidence"]]}
+    if r.get("error"):
+        out["error"] = r["error"]
+    return out
 
 # ---- internals ----
 def _norm(s: str) -> str:
