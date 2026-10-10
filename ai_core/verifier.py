@@ -4,6 +4,8 @@ The LLM never supplies page numbers. It cites a passage by number and quotes it;
 we confirm the quote really occurs in that passage and take the page from the
 caller's own passage data.
 """
+
+import os
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
@@ -120,6 +122,9 @@ def verify_claims(claims, evidence_by_claim, client: LLMClient = None) -> dict:
     items = _check_claims(claims)
     if not isinstance(evidence_by_claim, dict):
         raise ValueError("evidence_by_claim must be a dict keyed by claim id")
+    mock_mode = os.getenv("SO_MOCK_VERIFICATION", "").lower() == "true"
+    if not mock_mode and client is None:
+       client = LLMClient()
     client = client or LLMClient()
 
     def one(c):
@@ -134,7 +139,9 @@ def verify_claims(claims, evidence_by_claim, client: LLMClient = None) -> dict:
                                  "confidence": 0.0, "evidence": [],
                                  "explanation": "Could not verify this claim.",
                                  "error": f"Verification failed: {e}"})
-        return _contract(c, r)
+        print("ANALYZER RESULT:", r)
+        out = _contract(c, r)
+        return out
 
     with ThreadPoolExecutor(max_workers=min(MAX_WORKERS, len(items) or 1)) as pool:
         return {"claims": list(pool.map(one, items))}
@@ -161,7 +168,7 @@ def _check_claims(claims) -> list:
 
 
 def _contract(c, r) -> dict:
-    out = {"id": c["id"], "text": c["text"], "verdict": r["verdict"],
+    out = {"id": c["id"], "text": c["text"], "importance": 3 ,"verdict": r["verdict"],
            "category": r["category"], "confidence": r["confidence"],
            "explanation": r["explanation"],
            "evidence": [{"quote": q["quote"], "page": q["page"]} for q in r["evidence"]]}
