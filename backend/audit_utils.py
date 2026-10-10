@@ -107,7 +107,7 @@ def compute_span(claim_text: str, answer_text: str) -> Optional[dict]:
     ).ratio()
 
     # Avoid highlighting an unrelated sentence if the match is very weak.
-    if similarity < 0.35:
+    if similarity < 0.50:
         return None
 
     return {
