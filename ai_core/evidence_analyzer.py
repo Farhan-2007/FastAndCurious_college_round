@@ -100,22 +100,51 @@ def _pick_item(data: dict, claim: Claim) -> dict:
     raise LLMError("'results' missing from LLM output")
 
 
+
 def _build(claim: Claim, item: dict, passages: list):
-    # Which stances did the VERIFIED quotes take? (unverifiable quotes don't count)
-    stances = set()
+    # Verify quotes first, then use their supplied passage IDs to determine stance.
+    verified_quotes = []
     for e in item.get("evidence") or []:
-        if isinstance(e, dict) and _v.find_quote(e.get("quote", ""), passages,
-                                                 e.get("passage_id")):
-            s = str(e.get("stance", "")).strip().lower()
-            if s in ("supports", "contradicts"):
-                stances.add(s)
+        if not isinstance(e, dict):
+            continue
 
-    result = _v._build_result(claim, item, passages)  # validates enums, verifies quotes
+        quote = str(e.get("quote", "")).strip()
+        if not quote:
+            continue
 
-    # Deterministic safeguard: real quotes on both sides = conflicting evidence.
-    if stances == {"supports", "contradicts"} and result.verdict in ("supported", "contradicted"):
-        result.verdict, result.category = "ambiguous", "none"
+        normalized_quote = _v._norm(quote)
+        passage_id = e.get("passage_id")
+
+        try:
+            index = int(passage_id) - 1
+        except (TypeError, ValueError):
+            index = -1
+
+        if 0 <= index < len(passages):
+            if normalized_quote in _v._norm(passages[index].text):
+                verified_quotes.append(
+                    str(e.get("stance", "")).strip().lower()
+                )
+
+    stances = {
+        stance for stance in verified_quotes
+        if stance in ("supports", "contradicts")
+    }
+
+    result = _v._build_result(claim, item, passages)
+
+    # Conflicting verified evidence must not produce a firm verdict.
+    if (
+        stances == {"supports", "contradicts"}
+        and result.verdict in ("supported", "contradicted")
+    ):
+        result.verdict = "ambiguous"
+        result.category = "none"
         result.confidence = min(result.confidence, 0.6)
-        result.explanation = (result.explanation + " (Evidence conflicts: verified "
-                              "passages both support and contradict this claim.)").strip()
+        result.explanation = (
+            result.explanation
+            + " (Evidence conflicts: verified passages both support "
+              "and contradict this claim.)"
+        ).strip()
+
     return result
