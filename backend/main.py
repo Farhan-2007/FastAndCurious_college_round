@@ -4,6 +4,8 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from backend.pdf_utils import PDFValidationError, extract_pdf, validate_answer
+
 
 app = FastAPI(title="Second Opinion API")
 
@@ -44,51 +46,51 @@ async def create_audit(
     answer: str = Form(...),
     question: str = Form(""),
 ):
-    if not (pdf.filename or "").lower().endswith(".pdf"):
-        raise HTTPException(422, detail={"error": "File must be a PDF"})
+    # Read the uploaded PDF.
+    pdf_bytes = await pdf.read()
 
-    if not answer.strip():
+    # Validate the answer and PDF, then extract text page by page.
+    try:
+        validate_answer(answer)
+        pdf_result = extract_pdf(pdf_bytes, pdf.filename or "")
+    except PDFValidationError as exc:
         raise HTTPException(
-            422,
-            detail={"error": "Please provide the AI-generated answer"},
+            status_code=exc.status_code,
+            detail={"error": exc.message},
         )
 
-    contents = await pdf.read()
+    # These are now available for the real AI pipeline:
+    pdf_chunks = pdf_result["chunks"]
+    total_pages = pdf_result["total_pages"]
+    pages_without_text = pdf_result["pages_without_text"]
 
-    if len(contents) > 10 * 1024 * 1024:
-        raise HTTPException(
-            413,
-            detail={"error": "PDF exceeds the 10MB limit"},
-        )
-
-    if not contents.startswith(b"%PDF"):
-        raise HTTPException(
-            422,
-            detail={"error": "Not a valid PDF"},
-        )
-
-    audit_id = str(uuid4())
-
-    # Temporary mock response for frontend integration.
+    # Temporary response until the AI claim-verification pipeline is connected.
+    # The PDF is validated and extracted, but the claims are NOT verified yet.
     return {
-        "audit_id": audit_id,
+        "audit_id": str(uuid4()),
         "demo_mode": True,
         "overall": {
-            "score": 62,
-            "summary": "Demo result only; real verification is not connected yet.",
+            "score": 0,
+            "summary": (
+                "PDF validation and text extraction succeeded. "
+                "Claim verification is not connected yet."
+            ),
             "counts": {
-                "supported": 5,
-                "contradicted": 2,
-                "insufficient": 2,
-                "ambiguous": 1,
+                "supported": 0,
+                "contradicted": 0,
+                "insufficient": 0,
+                "ambiguous": 0,
             },
             "source_coverage": {
-                "pages_referenced": 8,
-                "total_pages": 12,
-                "claims_without_evidence": 2,
+                "pages_referenced": 0,
+                "total_pages": total_pages,
+                "claims_without_evidence": 0,
             },
         },
         "claims": [],
+        "note": (
+            f"{pages_without_text} page(s) with no extractable text were skipped."
+        ),
     }
 
 
