@@ -1,0 +1,12 @@
+# Python virtual environment and cache
+.venv/
+__pycache__/
+*.py[cod]
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+audit_debug.log
