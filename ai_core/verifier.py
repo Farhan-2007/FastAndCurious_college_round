@@ -13,7 +13,7 @@ from .schemas import (CATEGORIES, VERDICTS, ClaimResult, EvidenceQuote,
                       coerce_claims, coerce_passages)
 
 log = logging.getLogger(__name__)
-MAX_EVIDENCE_CHARS = 60_000
+MAX_EVIDENCE_CHARS = 12_000
 
 # ---- prompt (tune here) ----
 VERIFY_SYSTEM = """You are a strict fact-checking auditor. Check each claim ONLY against the numbered evidence passages provided.
@@ -97,7 +97,7 @@ def verify_claims_batch(claims, evidence, client: LLMClient = None) -> dict:
             results.append(_failed(c, f"Verification failed: {e}"))
     return {"results": [r.to_dict() for r in results], "warnings": warnings}
 
-MAX_WORKERS = 2  # parallel LLM calls (one per claim)
+MAX_WORKERS = 1 # parallel LLM calls (one per claim)
 
 
 def verify_claims(claims, evidence_by_claim, client: LLMClient = None) -> dict:
