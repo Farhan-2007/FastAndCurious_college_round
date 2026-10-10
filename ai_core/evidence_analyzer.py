@@ -4,6 +4,8 @@ Reuses the Step 1 LLM client, schemas and result builder. Instructions for the L
 live in prompts/verification_prompt.txt (edit that file to tune behaviour).
 This module does no PDF extraction, retrieval or HTTP - it only judges.
 """
+
+import os
 import logging
 from pathlib import Path
 
@@ -12,13 +14,44 @@ try:  # package import (e.g. `from ai_core import ...`)
     from .schemas import Claim, coerce_claims, coerce_passages
     from . import verifier as _v
 except ImportError:  # flat import (files run from inside the folder)
-    from llm_client import LLMClient, LLMError
-    from schemas import Claim, coerce_claims, coerce_passages
+    from .llm_client import LLMClient, LLMError
+    from .schemas import Claim, coerce_claims, coerce_passages
     import verifier as _v
 
 log = logging.getLogger(__name__)
 PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "verification_prompt.txt"
 
+def _mock_analyze_claim(claim, passages):
+    text = claim.text.lower()
+    combined = " ".join(p.text for p in passages).lower()
+
+    if not passages:
+        verdict = "insufficient"
+        category = "unsupported"
+        explanation = "No evidence passages were supplied."
+    elif "120 employees" in text and "120 people" in combined:
+        verdict = "supported"
+        category = "none"
+        explanation = "The evidence states that the laboratory employs 120 people."
+    elif "established in 1990" in text and "opened in 2018" in combined:
+        verdict = "contradicted"
+        category = "hallucination"
+        explanation = "The evidence says the laboratory opened in 2018, not 1990."
+    else:
+        verdict = "insufficient"
+        category = "unsupported"
+        explanation = "The mock verifier has no predefined result for this claim."
+
+    result = _v._fixed(claim, verdict, category, 0.95, explanation)
+
+    data = result.to_dict()
+    if passages:
+        data["evidence"] = [
+            {"quote": p.text, "page": p.page}
+            for p in passages
+        ]
+
+    return data
 
 def analyze_claim(claim, passages, client: LLMClient = None, claim_id: int = 1) -> dict:
     """Judge one claim against its retrieved passages.
@@ -39,7 +72,9 @@ def analyze_claim(claim, passages, client: LLMClient = None, claim_id: int = 1) 
     """
     claim = _as_claim(claim, claim_id)
     passages = coerce_passages(passages)
-
+    if os.getenv("SO_MOCK_VERIFICATION", "").lower() == "true":
+        return _mock_analyze_claim(claim, passages)
+    
     if not passages:  # nothing to check against -> insufficient, never "false"
         return _v._fixed(claim, "insufficient", "unsupported", 1.0,
                          "No evidence passages were supplied.").to_dict()

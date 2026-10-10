@@ -134,7 +134,9 @@ def verify_claims(claims, evidence_by_claim, client: LLMClient = None) -> dict:
                                  "confidence": 0.0, "evidence": [],
                                  "explanation": "Could not verify this claim.",
                                  "error": f"Verification failed: {e}"})
-        return _contract(c, r)
+        out = _contract(c, r)
+        print("CONTRACT RESULT:", out)
+        return out
 
     with ThreadPoolExecutor(max_workers=min(MAX_WORKERS, len(items) or 1)) as pool:
         return {"claims": list(pool.map(one, items))}

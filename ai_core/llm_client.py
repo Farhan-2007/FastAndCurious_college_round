@@ -11,6 +11,10 @@ import os
 import re
 import time
 
+from dotenv import load_dotenv
+
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+
 import requests
 
 API_URL = "https://api.anthropic.com/v1/messages"

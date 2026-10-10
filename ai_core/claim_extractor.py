@@ -4,11 +4,12 @@ Primary path: LLM picks claims (each must be an exact substring of the answer).
 Fallback (no key / API error / bad output): rule-based sentence splitter.
 Offsets are NOT computed here - the backend finds spans from the exact text.
 """
+import os
 import logging
 import re
 
-from llm_client import LLMClient, LLMError
-from schemas import Claim
+from  .llm_client import LLMClient, LLMError
+from  .schemas import Claim
 
 log = logging.getLogger(__name__)
 MAX_CLAIMS = 20
@@ -42,14 +43,15 @@ def extract_claims(answer: str, client: LLMClient = None, use_llm: bool = True) 
         texts = split_sentences(answer)
     return [Claim(id=i, text=t) for i, t in enumerate(texts[:MAX_CLAIMS], 1)]
 
+
 def decompose_claims(answer: str, client: LLMClient = None) -> list:
-    """Split an AI answer into claims: [{"id": 1, "text": "<exact substring>"}, ...].
-    Ids are 1..n in answer order. Text is copied verbatim from `answer` (no offsets
-    are computed - the backend finds spans). If the LLM is unavailable or returns
-    nothing usable, a rule-based sentence splitter is used instead.
-    Blank answer -> []. Raises ValueError if `answer` is not a string."""
+    """Split an AI answer into claims."""
     if not isinstance(answer, str):
         raise ValueError("answer must be a string")
+
+    if os.getenv("SO_MOCK_VERIFICATION", "").lower() == "true":
+        return [c.to_dict() for c in extract_claims(answer, use_llm=False)]
+
     return [c.to_dict() for c in extract_claims(answer, client)]
 
 def _llm_claims(answer: str, client: LLMClient) -> list:
