@@ -13,10 +13,6 @@ from fastapi.responses import JSONResponse
 
 from backend.pdf_utils import PDFValidationError, extract_pdf, validate_answer
 
-from ai_core.claim_extractor import decompose_claims
-from ai_core.evidence_retriever import retrieve_evidence
-from ai_core.verifier import verify_claims
-
 load_dotenv()
 
 logging.basicConfig(
@@ -101,6 +97,7 @@ async def create_audit(
     answer: str = Form(...),
     question: str = Form(""),
 ):
+    # Read and validate the uploaded file and answer.
     pdf_bytes = await pdf.read()
 
     try:
@@ -112,13 +109,14 @@ async def create_audit(
             detail={"error": exc.message},
         )
 
+    # Create an ID and start tracking this request.
     audit_id = str(uuid4())
-
     AUDIT_STATUS[audit_id] = {
         "step": "Starting audit",
         "progress": 5,
     }
 
+    # The pipeline calls this as it progresses.
     def update_status(step, progress):
         AUDIT_STATUS[audit_id] = {
             "step": step,
@@ -126,6 +124,7 @@ async def create_audit(
         }
 
     try:
+        # AI calls are synchronous, so run the pipeline in a worker thread.
         result = await asyncio.to_thread(
             run_audit_pipeline,
             answer,
@@ -135,21 +134,25 @@ async def create_audit(
         )
     except Exception:
         logger.exception("Audit failed. Audit ID: %s", audit_id)
+
         AUDIT_STATUS[audit_id] = {
             "step": "Audit failed",
             "progress": 100,
         }
+
         raise HTTPException(
             status_code=500,
-            detail={"error": "The audit could not be completed. Please try again."},
+            detail={
+                "error": "The audit could not be completed. Please try again."
+            },
         )
 
+    # Return the API response after the pipeline completes.
     return {
         "audit_id": audit_id,
         "overall": result["overall"],
         "claims": result["claims"],
     }
-
 
 @app.get("/api/audit/{audit_id}/status")
 def get_audit_status(audit_id: str):
