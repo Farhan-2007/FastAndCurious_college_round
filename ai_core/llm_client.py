@@ -1,4 +1,3 @@
-
 import json
 import os
 import time
@@ -37,7 +36,7 @@ class LLMClient:
             "max_tokens": self.max_tokens,
         }
 
-        for attempt in range(2):
+        for attempt in range(3):
             try:
                 response = requests.post(
                     API_URL,
@@ -49,9 +48,21 @@ class LLMClient:
                     timeout=self.timeout,
                 )
 
-                if response.status_code in (429, 500, 502, 503, 504):
-                    if attempt == 0:
-                        time.sleep(2)
+                if response.status_code == 429:
+                    if attempt < 2:
+                        retry_after = response.headers.get("Retry-After")
+
+                        try:
+                            wait_seconds = float(retry_after)
+                        except (TypeError, ValueError):
+                            wait_seconds = 15 * (attempt + 1)
+
+                        time.sleep(min(max(wait_seconds, 1), 60))
+                        continue
+
+                if response.status_code in (500, 502, 503, 504):
+                    if attempt < 2:
+                        time.sleep(2 * (attempt + 1))
                         continue
 
                 if not response.ok:
@@ -61,13 +72,31 @@ class LLMClient:
                     )
 
                 data = response.json()
-                return data["choices"][0]["message"]["content"]
+                choice = data["choices"][0]
+                message = choice.get("message", {})
+                content = message.get("content")
+
+                if choice.get("finish_reason") == "length":
+                    raise LLMError(
+                        "Groq response was truncated because the token limit was reached. "
+                        "Increase max_tokens or reduce the prompt length."
+                    )
+
+                if not isinstance(content, str) or not content.strip():
+                    raise LLMError(
+                        "Groq returned an empty response. "
+                        "Check the selected model and token limit."
+                    )
+
+                return content
 
             except requests.RequestException as exc:
-                if attempt == 0:
-                    time.sleep(2)
+                if attempt < 2:
+                    time.sleep(2 * (attempt + 1))
                     continue
+
                 raise LLMError(f"Groq request failed: {exc}") from exc
+
             except (KeyError, IndexError, TypeError, ValueError) as exc:
                 raise LLMError(
                     f"Unexpected Groq API response: {exc}"
@@ -80,13 +109,16 @@ class LLMClient:
 
         if text.startswith("```"):
             text = text.split("\n", 1)[-1]
+
             if text.endswith("```"):
                 text = text[:-3].strip()
 
         try:
             result = json.loads(text)
         except json.JSONDecodeError as exc:
-            raise LLMError(f"Model returned invalid JSON: {exc}") from exc
+            raise LLMError(
+                f"Model returned invalid JSON: {exc}"
+            ) from exc
 
         if not isinstance(result, dict):
             raise LLMError("Model response must be a JSON object.")

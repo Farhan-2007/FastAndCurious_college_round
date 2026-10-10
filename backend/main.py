@@ -6,6 +6,10 @@ from fastapi.responses import JSONResponse
 
 from backend.pdf_utils import PDFValidationError, extract_pdf, validate_answer
 
+from ai_core.claim_extractor import decompose_claims
+from ai_core.evidence_retriever import retrieve_evidence
+from ai_core.verifier import verify_claims
+
 
 app = FastAPI(title="Second Opinion API")
 
@@ -64,30 +68,70 @@ async def create_audit(
     total_pages = pdf_result["total_pages"]
     pages_without_text = pdf_result["pages_without_text"]
 
-    # Temporary response until the AI claim-verification pipeline is connected.
-    # The PDF is validated and extracted, but the claims are NOT verified yet.
+        # Extract factual claims from the submitted answer.
+    claims = decompose_claims(answer)
+
+    # Retrieve relevant PDF passages for each claim.
+    evidence_by_claim = {
+        claim["id"]: retrieve_evidence(claim, pdf_chunks, top_k=5)
+        for claim in claims
+    }
+
+    # Verify each claim against its retrieved evidence.
+    verification = verify_claims(claims, evidence_by_claim)
+    verified_claims = verification["claims"]
+
+    # Count the verdicts.
+    counts = {
+        "supported": 0,
+        "contradicted": 0,
+        "insufficient": 0,
+        "ambiguous": 0,
+    }
+
+    for claim in verified_claims:
+        verdict = claim.get("verdict")
+        if verdict in counts:
+            counts[verdict] += 1
+
+    # Calculate a simple score based on the proportion of supported claims.
+    total_claims = len(verified_claims)
+    score = round(
+        100 * counts["supported"] / total_claims
+    ) if total_claims else 0
+
+    pages_referenced = {
+        evidence["page"]
+        for claim in verified_claims
+        for evidence in claim.get("evidence", [])
+        if evidence.get("page") is not None
+    }
+
+    claims_without_evidence = sum(
+        1 for claim in verified_claims
+        if not claim.get("evidence")
+    )
+
     return {
         "audit_id": str(uuid4()),
-        "demo_mode": True,
+        "demo_mode": False,
         "overall": {
-            "score": 0,
+            "score": score,
             "summary": (
-                "PDF validation and text extraction succeeded. "
-                "Claim verification is not connected yet."
+                f"Verified {total_claims} claims: "
+                f"{counts['supported']} supported, "
+                f"{counts['contradicted']} contradicted, "
+                f"{counts['insufficient']} insufficient, "
+                f"{counts['ambiguous']} ambiguous."
             ),
-            "counts": {
-                "supported": 0,
-                "contradicted": 0,
-                "insufficient": 0,
-                "ambiguous": 0,
-            },
+            "counts": counts,
             "source_coverage": {
-                "pages_referenced": 0,
+                "pages_referenced": len(pages_referenced),
                 "total_pages": total_pages,
-                "claims_without_evidence": 0,
+                "claims_without_evidence": claims_without_evidence,
             },
         },
-        "claims": [],
+        "claims": verified_claims,
         "note": (
             f"{pages_without_text} page(s) with no extractable text were skipped."
         ),
