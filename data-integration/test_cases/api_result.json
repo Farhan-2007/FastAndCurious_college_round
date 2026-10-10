@@ -1,0 +1,20 @@
+{
+  "audit_id": "3e08cb6c-a9be-4919-bc02-94b9cba8c0de",
+  "demo_mode": true,
+  "overall": {
+    "score": 62,
+    "summary": "Demo result only; real verification is not connected yet.",
+    "counts": {
+      "supported": 5,
+      "contradicted": 2,
+      "insufficient": 2,
+      "ambiguous": 1
+    },
+    "source_coverage": {
+      "pages_referenced": 8,
+      "total_pages": 12,
+      "claims_without_evidence": 2
+    }
+  },
+  "claims": []
+}

@@ -1,0 +1,5 @@
+2026-10-10 22:11:12,864 [INFO] httpx: HTTP Request: OPTIONS http://testserver/api/audit "HTTP/1.1 200 OK"
+2026-10-10 22:11:12,949 [INFO] httpx: HTTP Request: POST http://testserver/api/audit "HTTP/1.1 413 Request Entity Too Large"
+2026-10-10 22:11:12,955 [INFO] httpx: HTTP Request: POST http://testserver/api/audit "HTTP/1.1 422 Unprocessable Entity"
+2026-10-10 22:11:12,963 [INFO] httpx: HTTP Request: POST http://testserver/api/audit "HTTP/1.1 422 Unprocessable Entity"
+2026-10-10 22:11:12,970 [INFO] httpx: HTTP Request: POST http://testserver/api/audit "HTTP/1.1 422 Unprocessable Entity"

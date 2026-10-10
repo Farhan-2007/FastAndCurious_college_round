@@ -8,8 +8,8 @@ import os
 import logging
 import re
 
-from  .llm_client import LLMClient, LLMError
-from  .schemas import Claim
+from .llm_client import LLMClient, LLMError
+from .schemas import Claim
 
 log = logging.getLogger(__name__)
 MAX_CLAIMS = 20
