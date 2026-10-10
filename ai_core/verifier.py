@@ -4,6 +4,8 @@ The LLM never supplies page numbers. It cites a passage by number and quotes it;
 we confirm the quote really occurs in that passage and take the page from the
 caller's own passage data.
 """
+
+import os
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
@@ -120,6 +122,9 @@ def verify_claims(claims, evidence_by_claim, client: LLMClient = None) -> dict:
     items = _check_claims(claims)
     if not isinstance(evidence_by_claim, dict):
         raise ValueError("evidence_by_claim must be a dict keyed by claim id")
+    mock_mode = os.getenv("SO_MOCK_VERIFICATION", "").lower() == "true"
+    if not mock_mode and client is None:
+       client = LLMClient()
     client = client or LLMClient()
 
     def one(c):
