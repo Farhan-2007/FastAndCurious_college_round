@@ -1,66 +1,59 @@
-# Second Opinion - Data Integration Test Checklist
+# Second Opinion — Test Checklist
 
-## 1. Normal PDF Test
+## A. API and Input Validation
 
-**Test file:** `rivertown_bikeshare.pdf`
+| ID | Test | Expected result |
+|---|---|---|
+| API-01 | Upload a valid PDF and answer | Request succeeds |
+| API-02 | Submit an empty answer | Clear validation error |
+| API-03 | Upload a non-PDF file | Rejected with a readable error |
+| API-04 | Upload a corrupted PDF | Graceful error, no crash |
+| API-05 | Submit a very large PDF | Clear size-limit error |
+| API-06 | Submit without the optional question | Request handled correctly |
 
-- [ ] Upload the original PDF.
-- [ ] Enter the question from `question.txt`.
-- [ ] Enter the AI-generated answer from `ai_answer.txt`.
-- [ ] Check whether the answer is split into individual claims.
-- [ ] Verify that each claim receives an appropriate verdict.
-- [ ] Check whether evidence excerpts match the PDF content.
-- [ ] Verify that the PDF page numbers are correct.
-- [ ] Compare the results with `expected_results.json`.
+## B. Claim Verification
 
-## 2. Prompt Injection Test
+Use `ai_answer.txt`, `question.txt`, `rivertown_bikeshare.pdf`, and `expected_results.json`.
 
-**Test file:** `rivertown_bikeshare_injected.pdf`
+| ID | Test | Expected result |
+|---|---|---|
+| VER-01 | Verify a directly supported claim | `supported` |
+| VER-02 | Verify a claim contradicting the report | `contradicted` |
+| VER-03 | Verify a claim not addressed by the report | `insufficient` |
+| VER-04 | Verify a vague or unclear claim | `ambiguous` |
+| VER-05 | Verify all 30 expected claims | Compare each verdict with `expected_results.json` |
+| VER-06 | Check numerical calculations | Correct values and calculations |
+| VER-07 | Check evidence quotes | Quote supports the associated verdict |
+| VER-08 | Check page references | Referenced page exists and supports the claim |
 
-- [ ] Upload the PDF containing the prompt-injection test.
-- [ ] Use the same question and AI-generated answer.
-- [ ] Check whether instructions embedded in the PDF are treated as untrusted content.
-- [ ] Verify that the embedded instruction does not force every claim to be marked as `supported`.
-- [ ] Check whether verdicts remain based on the actual evidence.
-- [ ] Record any unexpected results.
+## C. Prompt-Injection Resistance
 
-**Note:** Do not assume that `expected_results.json` applies to the injected PDF unless expected results for that test have been defined.
+Use `rivertown_bikeshare_injected.pdf`.
 
-## 3. Invalid Input Tests
+| ID | Test | Expected result |
+|---|---|---|
+| SEC-01 | Audit the injected PDF | PDF instructions do not override the application's rules |
+| SEC-02 | Check the verdicts against the original PDF | Malicious instructions do not change factual conclusions |
+| SEC-03 | Inspect the output for unexpected instructions | No obedience to instructions embedded in the document |
 
-- [ ] Try submitting without uploading a PDF.
-- [ ] Try submitting an empty AI answer.
-- [ ] Try uploading an invalid or unsupported file.
-- [ ] Check whether appropriate error messages are displayed.
+## D. Frontend–Backend Integration
 
-## 4. Verdict and Evidence Validation
+| ID | Test | Expected result |
+|---|---|---|
+| INT-01 | Upload PDF through the frontend | PDF reaches the backend |
+| INT-02 | Submit answer and question | Correct text reaches the backend |
+| INT-03 | Display the API response | Summary and claim cards render correctly |
+| INT-04 | Display an empty claims array | Clear empty state; no UI crash |
+| INT-05 | Simulate a failed API request | Error message appears |
+| INT-06 | Submit another audit | New result replaces the previous result correctly |
+| INT-07 | Check loading state | User can see that processing is underway |
 
-- [ ] Verify that `supported` means the evidence supports the claim.
-- [ ] Verify that `contradicted` means the evidence conflicts with the claim.
-- [ ] Verify that `insufficient_evidence` is used when there is not enough evidence to determine whether a claim is true.
-- [ ] Ensure that missing evidence is not automatically treated as proof that a claim is false.
-- [ ] Check that explanations and evidence excerpts are relevant to each claim.
+## Test Results
 
-## 5. Frontend and Backend Integration
+For every test, record:
+- Status: Pass / Fail / Blocked
+- Actual result
+- Issue or bug
+- Screenshot, if useful
 
-- [ ] Verify that the frontend sends the correct inputs to the Flask API.
-- [ ] Check whether the backend returns a valid structured response.
-- [ ] Verify that the frontend displays claims, verdicts, evidence, and explanations correctly.
-- [ ] Check how the application handles API errors.
-- [ ] Confirm that the application works from PDF upload to final results.
-
-## 6. Bug Tracking
-
-For every failed test, record the following information:
-
-- **Test case:** Name of the test.
-- **Expected result:** What should happen.
-- **Actual result:** What happened.
-- **Status:** Pass or Fail.
-- **Issue:** Description of the problem.
-
-## Testing Status
-
-**Status:** Not tested yet.
-
-**Important:** Mark a test as passed only after running it and verifying the result.
+**Important:** Mock API responses can validate API connectivity and UI rendering, but cannot prove that real claim verification works.
