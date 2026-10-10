@@ -1,3 +1,10 @@
+import asyncio
+import logging
+
+import os
+from dotenv import load_dotenv
+
+from backend.audit_pipeline import run_audit_pipeline
 from uuid import uuid4
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -6,19 +13,38 @@ from fastapi.responses import JSONResponse
 
 from backend.pdf_utils import PDFValidationError, extract_pdf, validate_answer
 
-from ai_core.claim_extractor import decompose_claims
-from ai_core.evidence_retriever import retrieve_evidence
-from ai_core.verifier import verify_claims
+load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[
+        logging.FileHandler("audit_debug.log", encoding="utf-8"),
+        logging.StreamHandler(),
+    ],
+)
+
+logger = logging.getLogger(__name__)
 
 
 app = FastAPI(title="Second Opinion API")
+logger = logging.getLogger(__name__)
+
+AUDIT_STATUS = {}
+frontend_origins = os.getenv(
+    "FRONTEND_ORIGINS",
+    "http://localhost:3000,http://localhost:5173,http://localhost:5174",
+)
+
+allowed_origins = [
+    origin.strip()
+    for origin in frontend_origins.split(",")
+    if origin.strip()
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:5173",
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -27,6 +53,27 @@ app.add_middleware(
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
+    detail = exc.detail
+
+    if isinstance(detail, dict) and "error" in detail:
+        message = detail["error"]
+    else:
+        message = str(detail)
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": message},
+    )
+@app.exception_handler(Exception)
+async def unexpected_exception_handler(request, exc):
+    logger.exception("Unexpected API error")
+
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "An unexpected server error occurred. Please try again."
+        },
+    )
     detail = exc.detail
     message = detail["error"] if isinstance(detail, dict) else str(detail)
     return JSONResponse(
@@ -50,10 +97,9 @@ async def create_audit(
     answer: str = Form(...),
     question: str = Form(""),
 ):
-    # Read the uploaded PDF.
+    # Read and validate the uploaded file and answer.
     pdf_bytes = await pdf.read()
 
-    # Validate the answer and PDF, then extract text page by page.
     try:
         validate_answer(answer)
         pdf_result = extract_pdf(pdf_bytes, pdf.filename or "")
@@ -63,84 +109,59 @@ async def create_audit(
             detail={"error": exc.message},
         )
 
-    # These are now available for the real AI pipeline:
-    pdf_chunks = pdf_result["chunks"]
-    total_pages = pdf_result["total_pages"]
-    pages_without_text = pdf_result["pages_without_text"]
-
-        # Extract factual claims from the submitted answer.
-    claims = decompose_claims(answer)
-
-    # Retrieve relevant PDF passages for each claim.
-    evidence_by_claim = {
-        claim["id"]: retrieve_evidence(claim, pdf_chunks, top_k=5)
-        for claim in claims
+    # Create an ID and start tracking this request.
+    audit_id = str(uuid4())
+    AUDIT_STATUS[audit_id] = {
+        "step": "Starting audit",
+        "progress": 5,
     }
 
-    # Verify each claim against its retrieved evidence.
-    verification = verify_claims(claims, evidence_by_claim)
-    verified_claims = verification["claims"]
+    # The pipeline calls this as it progresses.
+    def update_status(step, progress):
+        AUDIT_STATUS[audit_id] = {
+            "step": step,
+            "progress": progress,
+        }
 
-    # Count the verdicts.
-    counts = {
-        "supported": 0,
-        "contradicted": 0,
-        "insufficient": 0,
-        "ambiguous": 0,
-    }
+    try:
+        # AI calls are synchronous, so run the pipeline in a worker thread.
+        result = await asyncio.to_thread(
+            run_audit_pipeline,
+            answer,
+            pdf_result["chunks"],
+            pdf_result["total_pages"],
+            update_status,
+        )
+    except Exception:
+        logger.exception("Audit failed. Audit ID: %s", audit_id)
 
-    for claim in verified_claims:
-        verdict = claim.get("verdict")
-        if verdict in counts:
-            counts[verdict] += 1
+        AUDIT_STATUS[audit_id] = {
+            "step": "Audit failed",
+            "progress": 100,
+        }
 
-    # Calculate a simple score based on the proportion of supported claims.
-    total_claims = len(verified_claims)
-    score = round(
-        100 * counts["supported"] / total_claims
-    ) if total_claims else 0
-
-    pages_referenced = {
-        evidence["page"]
-        for claim in verified_claims
-        for evidence in claim.get("evidence", [])
-        if evidence.get("page") is not None
-    }
-
-    claims_without_evidence = sum(
-        1 for claim in verified_claims
-        if not claim.get("evidence")
-    )
-
-    return {
-        "audit_id": str(uuid4()),
-        "demo_mode": False,
-        "overall": {
-            "score": score,
-            "summary": (
-                f"Verified {total_claims} claims: "
-                f"{counts['supported']} supported, "
-                f"{counts['contradicted']} contradicted, "
-                f"{counts['insufficient']} insufficient, "
-                f"{counts['ambiguous']} ambiguous."
-            ),
-            "counts": counts,
-            "source_coverage": {
-                "pages_referenced": len(pages_referenced),
-                "total_pages": total_pages,
-                "claims_without_evidence": claims_without_evidence,
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "The audit could not be completed. Please try again."
             },
-        },
-        "claims": verified_claims,
-        "note": (
-            f"{pages_without_text} page(s) with no extractable text were skipped."
-        ),
-    }
+        )
 
+    # Return the API response after the pipeline completes.
+    return {
+        "audit_id": audit_id,
+        "overall": result["overall"],
+        "claims": result["claims"],
+    }
 
 @app.get("/api/audit/{audit_id}/status")
 def get_audit_status(audit_id: str):
-    return {
-        "step": "Demo result ready",
-        "progress": 100,
-    }
+    status = AUDIT_STATUS.get(audit_id)
+
+    if status is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "Audit not found"},
+        )
+
+    return status
