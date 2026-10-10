@@ -97,7 +97,7 @@ def verify_claims_batch(claims, evidence, client: LLMClient = None) -> dict:
             results.append(_failed(c, f"Verification failed: {e}"))
     return {"results": [r.to_dict() for r in results], "warnings": warnings}
 
-MAX_WORKERS = 4  # parallel LLM calls (one per claim)
+MAX_WORKERS = 2  # parallel LLM calls (one per claim)
 
 
 def verify_claims(claims, evidence_by_claim, client: LLMClient = None) -> dict:
