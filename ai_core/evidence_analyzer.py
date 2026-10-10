@@ -73,7 +73,8 @@ def analyze_claim(claim, passages, client: LLMClient = None, claim_id: int = 1) 
     claim = _as_claim(claim, claim_id)
     passages = coerce_passages(passages)
     if os.getenv("SO_MOCK_VERIFICATION", "").lower() == "true":
-        return _mock_analyze_claim(claim, passages)
+        result = _mock_analyze_claim(claim, passages)
+        return result
     
     if not passages:  # nothing to check against -> insufficient, never "false"
         return _v._fixed(claim, "insufficient", "unsupported", 1.0,

@@ -134,8 +134,8 @@ def verify_claims(claims, evidence_by_claim, client: LLMClient = None) -> dict:
                                  "confidence": 0.0, "evidence": [],
                                  "explanation": "Could not verify this claim.",
                                  "error": f"Verification failed: {e}"})
+        print("ANALYZER RESULT:", r)
         out = _contract(c, r)
-        print("CONTRACT RESULT:", out)
         return out
 
     with ThreadPoolExecutor(max_workers=min(MAX_WORKERS, len(items) or 1)) as pool:
@@ -163,7 +163,7 @@ def _check_claims(claims) -> list:
 
 
 def _contract(c, r) -> dict:
-    out = {"id": c["id"], "text": c["text"], "verdict": r["verdict"],
+    out = {"id": c["id"], "text": c["text"], "importance": 3 ,"verdict": r["verdict"],
            "category": r["category"], "confidence": r["confidence"],
            "explanation": r["explanation"],
            "evidence": [{"quote": q["quote"], "page": q["page"]} for q in r["evidence"]]}
