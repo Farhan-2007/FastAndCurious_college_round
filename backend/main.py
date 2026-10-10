@@ -1,3 +1,7 @@
+import asyncio
+import logging
+
+from backend.audit_pipeline import run_audit_pipeline
 from uuid import uuid4
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -8,7 +12,9 @@ from backend.pdf_utils import PDFValidationError, extract_pdf, validate_answer
 
 
 app = FastAPI(title="Second Opinion API")
+logger = logging.getLogger(__name__)
 
+AUDIT_STATUS = {}
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -46,10 +52,8 @@ async def create_audit(
     answer: str = Form(...),
     question: str = Form(""),
 ):
-    # Read the uploaded PDF.
     pdf_bytes = await pdf.read()
 
-    # Validate the answer and PDF, then extract text page by page.
     try:
         validate_answer(answer)
         pdf_result = extract_pdf(pdf_bytes, pdf.filename or "")
@@ -59,44 +63,53 @@ async def create_audit(
             detail={"error": exc.message},
         )
 
-    # These are now available for the real AI pipeline:
-    pdf_chunks = pdf_result["chunks"]
-    total_pages = pdf_result["total_pages"]
-    pages_without_text = pdf_result["pages_without_text"]
+    audit_id = str(uuid4())
 
-    # Temporary response until the AI claim-verification pipeline is connected.
-    # The PDF is validated and extracted, but the claims are NOT verified yet.
+    AUDIT_STATUS[audit_id] = {
+        "step": "Starting audit",
+        "progress": 5,
+    }
+
+    def update_status(step, progress):
+        AUDIT_STATUS[audit_id] = {
+            "step": step,
+            "progress": progress,
+        }
+
+    try:
+        result = await asyncio.to_thread(
+            run_audit_pipeline,
+            answer,
+            pdf_result["chunks"],
+            pdf_result["total_pages"],
+            update_status,
+        )
+    except Exception:
+        logger.exception("Audit failed. Audit ID: %s", audit_id)
+        AUDIT_STATUS[audit_id] = {
+            "step": "Audit failed",
+            "progress": 100,
+        }
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "The audit could not be completed. Please try again."},
+        )
+
     return {
-        "audit_id": str(uuid4()),
-        "demo_mode": True,
-        "overall": {
-            "score": 0,
-            "summary": (
-                "PDF validation and text extraction succeeded. "
-                "Claim verification is not connected yet."
-            ),
-            "counts": {
-                "supported": 0,
-                "contradicted": 0,
-                "insufficient": 0,
-                "ambiguous": 0,
-            },
-            "source_coverage": {
-                "pages_referenced": 0,
-                "total_pages": total_pages,
-                "claims_without_evidence": 0,
-            },
-        },
-        "claims": [],
-        "note": (
-            f"{pages_without_text} page(s) with no extractable text were skipped."
-        ),
+        "audit_id": audit_id,
+        "overall": result["overall"],
+        "claims": result["claims"],
     }
 
 
 @app.get("/api/audit/{audit_id}/status")
 def get_audit_status(audit_id: str):
-    return {
-        "step": "Demo result ready",
-        "progress": 100,
-    }
+    status = AUDIT_STATUS.get(audit_id)
+
+    if status is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "Audit not found"},
+        )
+
+    return status
