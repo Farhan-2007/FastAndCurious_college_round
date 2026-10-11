@@ -22,7 +22,7 @@ class LLMError(Exception):
 
 
 class LLMClient:
-    def __init__(self, api_key=None, model=None, timeout=None, max_tokens=3000):
+    def __init__(self, api_key=None, model=None, timeout=None, max_tokens=6000):
         self._api_key = api_key or os.environ.get("GROQ_API_KEY")
         self.model = model or os.environ.get("SO_LLM_MODEL", DEFAULT_MODEL)
         self.timeout = timeout or int(os.environ.get("SO_LLM_TIMEOUT", "60"))

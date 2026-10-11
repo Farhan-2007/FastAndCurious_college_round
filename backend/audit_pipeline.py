@@ -36,13 +36,13 @@ def run_audit_pipeline(answer, pdf_chunks, total_pages, progress_callback=None):
         if progress_callback:
             progress_callback(step, progress)
 
+    # Step 1: Decompose the answer into claims.
     update("Decomposing answer into claims", 15)
     claims = decompose_claims(answer)
 
     if not isinstance(claims, list):
         raise ValueError("Claim decomposition did not return a list")
 
-    # Ensure each claim has an ID and text before passing it to retrieval.
     clean_claims = []
 
     for index, claim in enumerate(claims, start=1):
@@ -58,14 +58,19 @@ def run_audit_pipeline(answer, pdf_chunks, total_pages, progress_callback=None):
             continue
 
         if not isinstance(claim_text, str) or not claim_text.strip():
-            logger.warning("Skipping claim %r with empty text", claim_id)
+            logger.warning(
+                "Skipping claim %r with empty text",
+                claim_id,
+            )
             continue
 
         clean_claims.append({
             "id": claim_id,
-            "text": claim_text,
+            "text": claim_text.strip(),
+            "importance": claim.get("importance", 3),
         })
 
+    # Step 2: Retrieve evidence for each claim.
     update("Retrieving evidence from PDF", 35)
 
     evidence_by_claim = {}
@@ -86,7 +91,9 @@ def run_audit_pipeline(answer, pdf_chunks, total_pages, progress_callback=None):
 
         evidence_by_claim[claim["id"]] = passages
 
+    # Step 3: Verify claims against the retrieved evidence.
     update("Verifying claims against evidence", 60)
+
     verification_response = verify_claims(
         claims=clean_claims,
         evidence_by_claim=evidence_by_claim,
@@ -98,7 +105,9 @@ def run_audit_pipeline(answer, pdf_chunks, total_pages, progress_callback=None):
     verification_results = verification_response.get("claims", [])
 
     if not isinstance(verification_results, list):
-        raise ValueError("Verification response is missing its claims list")
+        raise ValueError(
+            "Verification response is missing its claims list"
+        )
 
     results_by_id = {}
 
@@ -107,9 +116,11 @@ def run_audit_pipeline(answer, pdf_chunks, total_pages, progress_callback=None):
             continue
 
         result_id = result.get("id")
+
         if isinstance(result_id, int) and not isinstance(result_id, bool):
             results_by_id[result_id] = result
 
+    # Step 4: Validate evidence and construct the final report.
     update("Validating evidence and building report", 80)
 
     final_claims = []
@@ -119,7 +130,16 @@ def run_audit_pipeline(answer, pdf_chunks, total_pages, progress_callback=None):
         claim_text = claim["text"]
         result = results_by_id.get(claim_id, {})
 
+        # Detect a failed or missing verification result.
+        verification_error = result.get("error")
+
+        if not result:
+            verification_error = (
+                "No verification result was returned for this claim."
+            )
+
         verdict = result.get("verdict", "ambiguous")
+
         if verdict not in VALID_VERDICTS:
             logger.warning(
                 "Invalid verdict %r for claim %s; using ambiguous",
@@ -129,6 +149,7 @@ def run_audit_pipeline(answer, pdf_chunks, total_pages, progress_callback=None):
             verdict = "ambiguous"
 
         category = result.get("category", "none")
+
         if category not in VALID_CATEGORIES:
             category = "none"
 
@@ -137,39 +158,49 @@ def run_audit_pipeline(answer, pdf_chunks, total_pages, progress_callback=None):
         except (TypeError, ValueError):
             confidence = 0.0
 
-        # The project describes confidence as evidence strength and caps it
-        # below 1.0 to avoid presenting it as certainty.
+        # Keep confidence within the accepted range.
         confidence = max(0.0, min(0.95, confidence))
 
         explanation = str(
             result.get("explanation", "No explanation was returned.")
         )
 
-        if result.get("error"):
+        # Do not present a failed verification as a valid assessment.
+        if verification_error:
             logger.warning(
                 "Verification error for claim %s: %s",
                 claim_id,
-                result["error"],
+                verification_error,
             )
 
-        # The current confirmed decomposition interface returns only id/text.
-        # Use importance 3 until the team confirms how importance is supplied.
+            verdict = "ambiguous"
+            category = "none"
+            confidence = 0.0
+            explanation = (
+                "Verification failed; this claim could not be checked. "
+                "Please retry when the AI verification service is available."
+            )
+
+        # Validate the importance value.
         importance = claim.get("importance", 3)
+
         if isinstance(importance, bool) or not isinstance(importance, int):
             importance = 3
+
         importance = max(1, min(5, importance))
 
-        # Never trust an evidence page supplied by the model. Find the quote
-        # in the extracted PDF and use the page returned by validate_quote().
+        # Validate evidence quotes against the actual extracted PDF.
+        # Ignore all proposed evidence when verification itself failed.
         validated_evidence = []
         raw_evidence = result.get("evidence", [])
 
-        if isinstance(raw_evidence, list):
+        if not verification_error and isinstance(raw_evidence, list):
             for evidence_item in raw_evidence:
                 if not isinstance(evidence_item, dict):
                     continue
 
                 quote = evidence_item.get("quote")
+
                 if not isinstance(quote, str) or not quote.strip():
                     continue
 
@@ -189,15 +220,38 @@ def run_audit_pipeline(answer, pdf_chunks, total_pages, progress_callback=None):
                         claim_id,
                     )
 
+        # A firm verdict requires at least one verified source quote.
+        if (
+            not verification_error
+            and verdict in {"supported", "contradicted"}
+            and not validated_evidence
+        ):
+            logger.warning(
+                "Downgrading claim %s because no evidence quote was verified",
+                claim_id,
+            )
+
+            verdict = "ambiguous"
+            category = "none"
+            confidence = min(confidence, 0.3)
+
+            explanation = (
+                explanation
+                + " (Downgraded because no evidence quote could be "
+                "verified against the source PDF.)"
+            )
+
+        # Calculate the claim's span in the original answer.
         span = compute_span(claim_text, answer)
 
-        # A zero-length span does not highlight unrelated answer text.
-        # The frontend should ignore spans where start == end.
         if span is None:
-            logger.warning("Could not find a safe answer span for claim %s", claim_id)
+            logger.warning(
+                "Could not find a safe answer span for claim %s",
+                claim_id,
+            )
             span = {"start": 0, "end": 0}
 
-        final_claims.append({
+        final_claim = {
             "id": claim_id,
             "text": claim_text,
             "span": span,
@@ -207,8 +261,15 @@ def run_audit_pipeline(answer, pdf_chunks, total_pages, progress_callback=None):
             "confidence": confidence,
             "explanation": explanation,
             "evidence": validated_evidence,
-        })
+        }
 
+        # Preserve the error so downstream callers can detect the failure.
+        if verification_error:
+            final_claim["error"] = str(verification_error)
+
+        final_claims.append(final_claim)
+
+    # Step 5: Calculate the overall audit report.
     overall = build_overall_report(
         claims=final_claims,
         total_pages=total_pages,

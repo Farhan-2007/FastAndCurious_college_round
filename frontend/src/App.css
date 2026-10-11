@@ -311,3 +311,48 @@ button:focus-visible,a:focus-visible { outline: 2px solid #38bdf8; outline-offse
   .how-heading h2 { font-size: 31px; }
   .how-section { padding-top: 58px; padding-bottom: 66px; }
 }
+
+/* Audit summary: separate each line clearly */
+.api-notice > span:nth-child(2) {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.api-notice > span:nth-child(2) > strong {
+  line-height: 1.5;
+}
+
+.api-notice > span:nth-child(2) > small {
+  display: block;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+/* Keep verdict legend labels separated and readable */
+.map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+  padding-top: 14px;
+}
+
+.map-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.map-legend .legend-dot {
+  display: inline-block;
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
