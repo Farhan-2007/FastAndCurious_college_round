@@ -3,6 +3,11 @@ import logging
 from ai_core import decompose_claims, retrieve_evidence, verify_claims
 from backend.audit_utils import compute_span, validate_quote
 from backend.report_utils import build_overall_report
+from ai_core.advanced_features import (
+    assess_source_quality,
+    build_heatmap,
+    generate_corrected_answer,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -23,7 +28,7 @@ VALID_CATEGORIES = {
 }
 
 
-def run_audit_pipeline(answer, pdf_chunks, total_pages, progress_callback=None):
+def run_audit_pipeline(answer, pdf_chunks, total_pages, progress_callback=None, include_corrected_answer=False,):
     """
     Run claim decomposition, evidence retrieval, verification,
     evidence-quote validation, span calculation, and report calculation.
@@ -216,7 +221,44 @@ def run_audit_pipeline(answer, pdf_chunks, total_pages, progress_callback=None):
 
     update("Audit complete", 100)
 
-    return {
-        "overall": overall,
-        "claims": final_claims,
+    try:
+    heatmap = build_heatmap(final_claims)
+except Exception:
+    logger.exception("Could not build the hallucination heatmap")
+    heatmap = []
+
+try:
+    source_quality = assess_source_quality(
+        final_claims,
+        pdf_chunks,
+    )
+except Exception:
+    logger.exception("Could not assess source quality")
+    source_quality = {
+        "assessment_type": "unavailable",
+        "issues": ["Source-quality assessment failed."],
+        "limitations": [],
     }
+
+result = {
+    "overall": overall,
+    "claims": final_claims,
+    "heatmap": heatmap,
+    "source_quality": source_quality,
+}
+
+if include_corrected_answer:
+    try:
+        result["corrected_answer"] = generate_corrected_answer(
+            original_answer=answer,
+            claims=final_claims,
+        )
+    except Exception:
+        logger.exception("Could not generate a corrected answer")
+        result["corrected_answer"] = {
+            "corrected_answer": None,
+            "status": "failed",
+            "message": "The corrected answer could not be generated.",
+        }
+
+return result
