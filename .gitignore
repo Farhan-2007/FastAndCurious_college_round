@@ -1,2 +1,5 @@
 .vscode/
 .env
+audit_debug.log
+__pycache__/
+*.py[cod]

@@ -1,5 +1,5 @@
 
-from advanced_features import (
+from ai_core.advanced_features import (
     build_heatmap,
     assess_source_quality,
     generate_corrected_answer,
