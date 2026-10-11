@@ -1,10 +1,23 @@
+
 import { useEffect, useRef, useState } from 'react'
 import './App.css'
 
 const sampleAnswer = 'The study found that regular walking can improve cardiovascular health. Participants who walked for at least 30 minutes a day had a 20% lower risk of heart disease, and the benefits were seen across all age groups.'
 
 function Icon({ name, size = 20, className = '' }) {
-  const shared = { className, width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true }
+  const shared = {
+    className,
+    width: size,
+    height: size,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.7,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    'aria-hidden': true,
+  }
+
   const paths = {
     spark: <><path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z" /><path d="m19 15 .9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15Z" /></>,
     file: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><path d="M14 2v6h6M8 13h8M8 17h8" /></>,
@@ -15,11 +28,14 @@ function Icon({ name, size = 20, className = '' }) {
     shield: <><path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11Z" /><path d="m9 12 2 2 4-4" /></>,
     book: <><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" /></>,
   }
+
   return <svg {...shared}>{paths[name]}</svg>
 }
 
 function formatSize(bytes) {
-  return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return bytes < 1024 * 1024
+    ? `${Math.max(1, Math.round(bytes / 1024))} KB`
+    : `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
@@ -38,43 +54,71 @@ function sanitizeErrorText(value) {
 function getBackendErrorText(value) {
   if (typeof value === 'string') return value
   if (!value || typeof value !== 'object') return ''
+
   for (const key of ['error', 'detail']) {
     const field = value[key]
+
     if (typeof field === 'string' && field.trim()) return field
+
     if (field && typeof field === 'object') {
       const nested = field.message || field.detail || field.error
       if (typeof nested === 'string' && nested.trim()) return nested
-      try { return JSON.stringify(field) } catch { return '' }
+
+      try {
+        return JSON.stringify(field)
+      } catch {
+        return ''
+      }
     }
   }
+
   return ''
 }
 
 function isFailureStatus(value) {
   if (typeof value === 'number') return value >= 400
-  return typeof value === 'string' && (/^(error|failed|failure|unsuccessful|rate[ _-]?limited|quota[ _-]?exceeded)$/i.test(value.trim()) || /^\d{3}$/.test(value.trim()) && Number(value) >= 400)
+
+  return typeof value === 'string' && (
+    /^(error|failed|failure|unsuccessful|rate[ _-]?limited|quota[ _-]?exceeded)$/i.test(value.trim()) ||
+    (/^\d{3}$/.test(value.trim()) && Number(value) >= 400)
+  )
 }
 
 function isRateLimitFailure(status, detail, applicationStatus) {
-  return status === 429 || Number(applicationStatus) === 429 || /\b429\b|rate[ -]?limit|quota|resource[_ -]?exhausted/i.test(detail)
+  return status === 429 ||
+    Number(applicationStatus) === 429 ||
+    /\b429\b|rate[ -]?limit|quota|resource[_ -]?exhausted/i.test(detail)
 }
 
 function hasClaimError(claim) {
-  return typeof claim?.error === 'string' ? Boolean(claim.error.trim()) : Boolean(claim?.error)
+  return typeof claim?.error === 'string'
+    ? Boolean(claim.error.trim())
+    : Boolean(claim?.error)
 }
 
 function isProviderQuotaError(claim) {
   let errorText = claim?.error
+
   if (typeof errorText !== 'string') {
-    try { errorText = JSON.stringify(errorText) } catch { errorText = '' }
+    try {
+      errorText = JSON.stringify(errorText)
+    } catch {
+      errorText = ''
+    }
   }
+
   return /token.per.day|quota|rate[ -]?limit|429|resource[_ -]?exhausted|too many requests/i.test(errorText || '')
 }
 
 function displayValue(value) {
   if (value == null) return ''
   if (typeof value === 'string') return value
-  try { return JSON.stringify(value) } catch { return '' }
+
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return ''
+  }
 }
 
 function evidenceQuote(item) {
@@ -83,7 +127,9 @@ function evidenceQuote(item) {
 }
 
 function evidencePage(item) {
-  return item && typeof item === 'object' ? item.page ?? item.page_number : undefined
+  return item && typeof item === 'object'
+    ? item.page ?? item.page_number
+    : undefined
 }
 
 function App() {
@@ -97,15 +143,44 @@ function App() {
   const [auditError, setAuditError] = useState('')
   const [auditData, setAuditData] = useState(null)
   const [pdfUrl, setPdfUrl] = useState('')
+
   const inputRef = useRef(null)
   const pdfUrlRef = useRef('')
-  const wordCount = answer.trim() ? answer.trim().split(/\s+/).length : 0
-  const isDemo = auditData?.demo_mode === true || auditData?.demo === true || auditData?.mode === 'demo' || auditData?.llm === 'fallback'
-  const auditClaims = Array.isArray(auditData?.claims) ? auditData.claims.filter((claim) => claim && typeof claim === 'object') : []
+
+  const wordCount = answer.trim()
+    ? answer.trim().split(/\s+/).length
+    : 0
+
+  const isDemo =
+    auditData?.demo_mode === true ||
+    auditData?.demo === true ||
+    auditData?.mode === 'demo' ||
+    auditData?.llm === 'fallback'
+
+  const auditClaims = Array.isArray(auditData?.claims)
+    ? auditData.claims.filter((claim) => claim && typeof claim === 'object')
+    : []
+
   const failedClaims = auditClaims.filter(hasClaimError)
   const verifiedClaims = auditClaims.filter((claim) => !hasClaimError(claim))
-  const allClaimsFailed = auditClaims.length > 0 && failedClaims.length === auditClaims.length
-  const hasPartialClaimFailures = failedClaims.length > 0 && !allClaimsFailed
+
+  const verdictCounts = auditClaims.reduce((counts, claim) => {
+    const verdict = String(claim.verdict || '').toLowerCase()
+    if (Object.hasOwn(counts, verdict)) counts[verdict] += 1
+    return counts
+  }, {
+    supported: 0,
+    contradicted: 0,
+    insufficient: 0,
+    ambiguous: 0,
+  })
+
+  const allClaimsFailed =
+    auditClaims.length > 0 && failedClaims.length === auditClaims.length
+
+  const hasPartialClaimFailures =
+    failedClaims.length > 0 && !allClaimsFailed
+
   const quotaFailure = failedClaims.some(isProviderQuotaError)
 
   useEffect(() => {
@@ -116,12 +191,19 @@ function App() {
 
   function acceptFile(file) {
     if (!file) return
-    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+
+    if (
+      file.type !== 'application/pdf' &&
+      !file.name.toLowerCase().endsWith('.pdf')
+    ) {
       setFileError('Please choose a PDF file to continue.')
       return
     }
+
     setFileError('')
+
     if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current)
+
     const url = URL.createObjectURL(file)
     pdfUrlRef.current = url
     setPdfUrl(url)
@@ -132,12 +214,14 @@ function App() {
 
   function clearFile() {
     if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current)
+
     pdfUrlRef.current = ''
     setPdfUrl('')
     setPdf(null)
     setFileError('')
     setAuditMessage(false)
     setAuditData(null)
+
     if (inputRef.current) inputRef.current.value = ''
   }
 
@@ -151,24 +235,37 @@ function App() {
 
   async function submitAudit() {
     if (!canAudit || auditState === 'loading') return
+
     if (!API_BASE_URL) {
       setAuditState('error')
-      setAuditError('API base URL is not configured. Set VITE_API_BASE_URL in frontend/.env.local and restart Vite.')
+      setAuditError(
+        'API base URL is not configured. Set VITE_API_BASE_URL in frontend/.env.local and restart Vite.'
+      )
       return
     }
+
     setAuditState('loading')
     setAuditError('')
     setAuditData(null)
+
     const formData = new FormData()
     formData.append('pdf', pdf)
     formData.append('answer', answer.trim())
+
     if (question.trim()) formData.append('question', question.trim())
+
     const endpoint = `${API_BASE_URL}/api/audit`
+
     try {
-      const response = await fetch(endpoint, { method: 'POST', body: formData })
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        body: formData,
+      })
+
       const rawBody = await response.text()
       let body = null
       let isJson = false
+
       if (rawBody.trim()) {
         try {
           body = JSON.parse(rawBody)
@@ -180,49 +277,85 @@ function App() {
 
       const backendError = sanitizeErrorText(getBackendErrorText(body))
       const statusFailure = isJson && isFailureStatus(body?.status)
-      const applicationFailure = isJson && (body?.success === false || statusFailure || Boolean(backendError))
-      const failureDetail = backendError || (applicationFailure ? sanitizeErrorText(body?.message) : '')
+      const applicationFailure = isJson && (
+        body?.success === false ||
+        statusFailure ||
+        Boolean(backendError)
+      )
+
+      const failureDetail = backendError ||
+        (applicationFailure ? sanitizeErrorText(body?.message) : '')
+
       const httpFailure = !response.ok
+
       if (httpFailure || applicationFailure) {
-        const category = isRateLimitFailure(response.status, failureDetail, body?.status)
+        const category = isRateLimitFailure(
+          response.status,
+          failureDetail,
+          body?.status
+        )
           ? 'rate_limit_or_quota'
-          : applicationFailure ? 'application_failure' : 'http_failure'
+          : applicationFailure
+            ? 'application_failure'
+            : 'http_failure'
+
         const message = category === 'rate_limit_or_quota'
           ? `The audit service is rate limited or its API quota is exhausted.${failureDetail ? ` ${failureDetail}` : ''}`
-          : failureDetail || (httpFailure
-            ? `Audit failed with HTTP ${response.status}${rawBody.trim() ? `: ${sanitizeErrorText(rawBody)}` : '; the service returned no error details.'}`
-            : 'The audit service reported a failure.')
+          : failureDetail || (
+            httpFailure
+              ? `Audit failed with HTTP ${response.status}${rawBody.trim() ? `: ${sanitizeErrorText(rawBody)}` : '; the service returned no error details.'}`
+              : 'The audit service reported a failure.'
+          )
+
         console.error('[Second Opinion] Audit request failed', {
           endpoint,
           httpStatus: response.status,
           category,
           error: sanitizeErrorText(failureDetail || rawBody || message),
         })
+
         throw new Error(message)
       }
 
-      if (!isJson || !body || typeof body !== 'object' || Array.isArray(body)) {
-        const category = rawBody.trim() ? 'unexpected_response' : 'empty_response'
+      if (
+        !isJson ||
+        !body ||
+        typeof body !== 'object' ||
+        Array.isArray(body)
+      ) {
+        const category = rawBody.trim()
+          ? 'unexpected_response'
+          : 'empty_response'
+
         const message = category === 'empty_response'
           ? 'The audit service returned an empty response. No results were displayed.'
           : 'The audit service returned a non-JSON response. No results were displayed.'
+
         console.error('[Second Opinion] Audit response could not be used', {
           endpoint,
           httpStatus: response.status,
           category,
           error: sanitizeErrorText(rawBody) || '(empty response)',
         })
+
         throw new Error(message)
       }
-      const responseClaims = Array.isArray(body.claims) ? body.claims.filter((claim) => claim && typeof claim === 'object') : []
+
+      const responseClaims = Array.isArray(body.claims)
+        ? body.claims.filter((claim) => claim && typeof claim === 'object')
+        : []
+
       const responseFailedClaims = responseClaims.filter(hasClaimError)
       const responseVerifiedClaims = responseClaims.filter((claim) => !hasClaimError(claim))
       const responseHasQuotaFailure = responseFailedClaims.some(isProviderQuotaError)
+
       if (responseFailedClaims.length > 0) {
         console.warn('[Second Opinion] Audit contains claims that were not verified', {
           endpoint,
           httpStatus: response.status,
-          category: responseHasQuotaFailure ? 'provider_quota_or_rate_limit' : 'claim_verification_failure',
+          category: responseHasQuotaFailure
+            ? 'provider_quota_or_rate_limit'
+            : 'claim_verification_failure',
           failedClaims: responseFailedClaims.length,
           verifiedClaims: responseVerifiedClaims.length,
         })
@@ -234,12 +367,19 @@ function App() {
           claims: responseClaims.length,
         })
       }
+
       setAuditData(body)
       setAuditState('success')
     } catch (error) {
       const isNetworkError = error instanceof TypeError
-      const category = isNetworkError ? 'network_or_cors' : 'request_or_response_error'
-      const detail = sanitizeErrorText(error?.message || 'Unknown audit request error')
+      const category = isNetworkError
+        ? 'network_or_cors'
+        : 'request_or_response_error'
+
+      const detail = sanitizeErrorText(
+        error?.message || 'Unknown audit request error'
+      )
+
       if (category === 'network_or_cors') {
         console.error('[Second Opinion] Audit request could not be read by the browser', {
           endpoint,
@@ -248,10 +388,13 @@ function App() {
           error: detail,
         })
       }
+
       setAuditState('error')
-      setAuditError(isNetworkError
-        ? 'The browser could not access the audit response because of a network or CORS issue. The server-side error could not be read.'
-        : detail || 'The audit request failed. Please try again.')
+      setAuditError(
+        isNetworkError
+          ? 'The browser could not access the audit response because of a network or CORS issue. The server-side error could not be read.'
+          : detail || 'The audit request failed. Please try again.'
+      )
     }
   }
 
@@ -262,11 +405,16 @@ function App() {
           <span className="brand-mark"><Icon name="spark" size={21} /></span>
           <span>second<span className="brand-light">opinion</span></span>
         </a>
+
         <nav className="main-nav" aria-label="Main navigation">
           <a className="nav-link active" href="#workspace">Audit Workspace</a>
           <a className="nav-link" href="#how-it-works">How It Works</a>
         </nav>
-        <div className="topbar-right"><div className="prototype-pill"><span className="status-dot" /> Prototype</div><span className="avatar">SO</span></div>
+
+        <div className="topbar-right">
+          <div className="prototype-pill"><span className="status-dot" /> Prototype</div>
+          <span className="avatar">SO</span>
+        </div>
       </header>
 
       <main id="top">
@@ -274,24 +422,50 @@ function App() {
           <div className="hero-copy-block">
             <div className="eyebrow"><span className="eyebrow-line" /> EVIDENCE FIRST, ALWAYS</div>
             <h1 id="hero-title">Verify AI answers.<br /><span>Trust the evidence.</span></h1>
-            <p className="hero-copy">A more thoughtful way to check what AI gets right. Compare an answer with its source PDF and keep the evidence in view.</p>
-            <div className="hero-note"><Icon name="shield" size={17} /><span>Your source stays yours. No invented citations, just a clearer path to the truth.</span></div>
+            <p className="hero-copy">
+              A more thoughtful way to check what AI gets right. Compare an answer
+              with its source PDF and keep the evidence in view.
+            </p>
+            <div className="hero-note">
+              <Icon name="shield" size={17} />
+              <span>Your source stays yours. No invented citations, just a clearer path to the truth.</span>
+            </div>
           </div>
+
           <div className="workflow-card" aria-label="Three steps to review an answer">
             <span className="workflow-label">YOUR REVIEW, IN THREE STEPS</span>
-            <div className="workflow-step"><span className="workflow-num">01</span><span className="workflow-icon"><Icon name="file" size={18} /></span><span><strong>Bring the source</strong><small>Start with a trusted PDF</small></span><Icon className="workflow-check" name="check" size={16} /></div>
+            <div className="workflow-step">
+              <span className="workflow-num">01</span>
+              <span className="workflow-icon"><Icon name="file" size={18} /></span>
+              <span><strong>Bring the source</strong><small>Start with a trusted PDF</small></span>
+              <Icon className="workflow-check" name="check" size={16} />
+            </div>
             <div className="workflow-rule" />
-            <div className="workflow-step"><span className="workflow-num">02</span><span className="workflow-icon"><Icon name="spark" size={18} /></span><span><strong>Add the answer</strong><small>Paste what you want to check</small></span><Icon className="workflow-check" name="check" size={16} /></div>
+            <div className="workflow-step">
+              <span className="workflow-num">02</span>
+              <span className="workflow-icon"><Icon name="spark" size={18} /></span>
+              <span><strong>Add the answer</strong><small>Paste what you want to check</small></span>
+              <Icon className="workflow-check" name="check" size={16} />
+            </div>
             <div className="workflow-rule" />
-            <div className="workflow-step current"><span className="workflow-num">03</span><span className="workflow-icon"><Icon name="shield" size={18} /></span><span><strong>Review the evidence</strong><small>See what the source supports</small></span><span className="current-tag">UP NEXT</span></div>
+            <div className="workflow-step current">
+              <span className="workflow-num">03</span>
+              <span className="workflow-icon"><Icon name="shield" size={18} /></span>
+              <span><strong>Review the evidence</strong><small>See what the source supports</small></span>
+              <span className="current-tag">UP NEXT</span>
+            </div>
           </div>
         </section>
 
         <section className="workspace" id="workspace" aria-label="Audit workspace">
           <div className="workspace-heading">
-            <div><span className="section-kicker">AUDIT WORKSPACE</span><h2>Set up your review</h2></div>
+            <div>
+              <span className="section-kicker">AUDIT WORKSPACE</span>
+              <h2>Set up your review</h2>
+            </div>
             <span className="step-count"><span className="step-live" /> Ready when you are</span>
           </div>
+
           <div className="workspace-grid">
             <div className="panel source-panel">
               <div className="panel-title-row">
@@ -299,24 +473,50 @@ function App() {
                 <div><h3>Source document</h3><p>The PDF your answer should be checked against</p></div>
                 <span className="required-tag">REQUIRED</span>
               </div>
-              <input ref={inputRef} className="visually-hidden" type="file" accept="application/pdf,.pdf" aria-label="Choose a PDF source document" onChange={(event) => acceptFile(event.target.files?.[0])} />
+
+              <input
+                ref={inputRef}
+                className="visually-hidden"
+                type="file"
+                accept="application/pdf,.pdf"
+                aria-label="Choose a PDF source document"
+                onChange={(event) => acceptFile(event.target.files?.[0])}
+              />
+
               {pdf ? (
                 <div className="file-ready">
                   <span className="pdf-badge">PDF</span>
-                  <div className="file-info"><strong>{pdf.name}</strong><span>{formatSize(pdf.size)} · Ready to review</span></div>
+                  <div className="file-info">
+                    <strong>{pdf.name}</strong>
+                    <span>{formatSize(pdf.size)} · Ready to review</span>
+                  </div>
                   <span className="file-check"><Icon name="check" size={15} /></span>
-                  <button className="icon-button remove-file" type="button" onClick={clearFile} aria-label="Remove uploaded PDF"><Icon name="close" size={17} /></button>
+                  <button className="icon-button remove-file" type="button" onClick={clearFile} aria-label="Remove uploaded PDF">
+                    <Icon name="close" size={17} />
+                  </button>
                   <button className="replace-link" type="button" onClick={() => inputRef.current?.click()}>Replace</button>
                 </div>
               ) : (
-                <button className={`dropzone ${isDragging ? 'dragging' : ''}`} type="button" onClick={() => inputRef.current?.click()} onDragOver={(event) => { event.preventDefault(); setIsDragging(true) }} onDragLeave={() => setIsDragging(false)} onDrop={handleDrop}>
+                <button
+                  className={`dropzone ${isDragging ? 'dragging' : ''}`}
+                  type="button"
+                  onClick={() => inputRef.current?.click()}
+                  onDragOver={(event) => { event.preventDefault(); setIsDragging(true) }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={handleDrop}
+                >
                   <span className="upload-icon"><Icon name="upload" size={22} /></span>
                   <span className="drop-title">Drop your PDF here, or <span>browse</span></span>
                   <span className="drop-hint">PDF files only <i /> Add your source document to begin</span>
                 </button>
               )}
+
               {fileError && <p className="inline-error" role="alert">{fileError}</p>}
-              <div className="privacy-note"><Icon name="shield" size={15} /><span>Your document is only used as the source for this review.</span></div>
+
+              <div className="privacy-note">
+                <Icon name="shield" size={15} />
+                <span>Your document is only used as the source for this review.</span>
+              </div>
             </div>
 
             <div className="panel answer-panel">
@@ -325,91 +525,346 @@ function App() {
                 <div><h3>AI-generated answer</h3><p>Paste the answer you want to verify</p></div>
                 <span className="required-tag">REQUIRED</span>
               </div>
+
               <div className="answer-field-wrap">
                 <label className="visually-hidden" htmlFor="answer">AI-generated answer</label>
-                <textarea id="answer" value={answer} onChange={(event) => { setAnswer(event.target.value); setAuditMessage(false) }} placeholder="Paste an AI-generated answer here..." />
-                {!answer && <div className="textarea-hint"><span className="hint-mark">↳</span> Include the full response so each claim can be reviewed.</div>}
+                <textarea
+                  id="answer"
+                  value={answer}
+                  onChange={(event) => {
+                    setAnswer(event.target.value)
+                    setAuditMessage(false)
+                  }}
+                  placeholder="Paste an AI-generated answer here..."
+                />
+                {!answer && (
+                  <div className="textarea-hint">
+                    <span className="hint-mark">↳</span>
+                    Include the full response so each claim can be reviewed.
+                  </div>
+                )}
               </div>
+
               <div className="answer-toolbar">
                 <span className="word-count">{wordCount} {wordCount === 1 ? 'word' : 'words'}</span>
-                <div className="text-actions"><button type="button" className="text-button" onClick={() => { setAnswer(''); setAuditMessage(false) }} disabled={!answer}>Clear</button><span className="action-divider" /><button type="button" className="text-button sample-button" onClick={() => { setAnswer(sampleAnswer); setAuditMessage(false) }}>Use sample answer <Icon name="arrow" size={14} /></button></div>
+                <div className="text-actions">
+                  <button type="button" className="text-button" onClick={() => { setAnswer(''); setAuditMessage(false) }} disabled={!answer}>Clear</button>
+                  <span className="action-divider" />
+                  <button type="button" className="text-button sample-button" onClick={() => { setAnswer(sampleAnswer); setAuditMessage(false) }}>
+                    Use sample answer <Icon name="arrow" size={14} />
+                  </button>
+                </div>
               </div>
             </div>
           </div>
 
           <div className="question-row">
-            <label htmlFor="question"><span className="optional-icon">?</span><span><strong>Have a question in mind?</strong><small>Optional · Give the review a little more context</small></span></label>
-            <input id="question" type="text" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="e.g. Does the study support this conclusion?" />
+            <label htmlFor="question">
+              <span className="optional-icon">?</span>
+              <span><strong>Have a question in mind?</strong><small>Optional · Give the review a little more context</small></span>
+            </label>
+            <input
+              id="question"
+              type="text"
+              value={question}
+              onChange={(event) => setQuestion(event.target.value)}
+              placeholder="e.g. Does the study support this conclusion?"
+            />
           </div>
 
           <div className="audit-footer">
-            <div className="footer-guidance"><span className="mini-lock"><Icon name="shield" size={16} /></span><span>We’ll compare claims to the source, one by one.</span></div>
-            <button className="audit-button" type="button" disabled={!canAudit || auditState === 'loading'} onClick={submitAudit}>{auditState === 'loading' ? 'Auditing…' : 'Audit answer'} <Icon name="arrow" size={17} /></button>
+            <div className="footer-guidance">
+              <span className="mini-lock"><Icon name="shield" size={16} /></span>
+              <span>We’ll compare claims to the source, one by one.</span>
+            </div>
+            <button className="audit-button" type="button" disabled={!canAudit || auditState === 'loading'} onClick={submitAudit}>
+              {auditState === 'loading' ? 'Auditing…' : 'Audit answer'}
+              <Icon name="arrow" size={17} />
+            </button>
           </div>
-          {auditMessage && <div className="api-notice" role="status"><span className="notice-icon"><Icon name="book" size={18} /></span><span><strong>Audit status</strong><small>{auditMessage}</small></span><button type="button" className="icon-button" aria-label="Dismiss message" onClick={() => setAuditMessage(false)}><Icon name="close" size={17} /></button></div>}
-          {auditError && <div className="api-notice" role="alert"><span className="notice-icon"><Icon name="book" size={18} /></span><span><strong>Audit could not be completed</strong><small>{auditError}</small></span></div>}
-          {auditState === 'success' && (allClaimsFailed
-            ? <div className="api-notice" role="alert"><span className="notice-icon"><Icon name="book" size={18} /></span><span><strong>Verification unavailable</strong><small>{quotaFailure ? "The backend's AI provider quota has been exceeded. Please ask the backend team to resolve the quota issue before retrying." : 'The backend could not verify any claims. Please ask the backend team to resolve the verification errors before retrying.'}</small></span></div>
-            : hasPartialClaimFailures
-              ? <div className="api-notice" role="status"><span className="notice-icon"><Icon name="book" size={18} /></span><span><strong>Some claims were not verified</strong><small>{quotaFailure ? 'The backend AI provider quota or rate limit was reached. Failed claims are excluded from verified results.' : 'Failed claims are marked Not verified and excluded from verified results.'}</small></span></div>
-              : <div className="api-notice" role="status"><span className="notice-icon"><Icon name="book" size={18} /></span><span><strong>{isDemo ? 'Demo audit response' : 'Audit results received'}</strong><small>{isDemo ? 'The backend reported demo mode. ' : ''}{verifiedClaims.length} claim{verifiedClaims.length === 1 ? '' : 's'} returned without verification errors.</small></span></div>)}
-          <div className="analysis-heading"><div><span className="section-kicker">THE INVESTIGATION</span><h2>Evidence, in context</h2></div><span className="analysis-locked"><Icon name="shield" size={15} />{auditState === 'success' && auditClaims.length > 0 ? allClaimsFailed ? 'Verification unavailable' : `${verifiedClaims.length} verified · ${failedClaims.length} not verified` : 'Waiting for an audit'}</span></div>
+
+          {auditMessage && (
+            <div className="api-notice" role="status">
+              <span className="notice-icon"><Icon name="book" size={18} /></span>
+              <span><strong>Audit status</strong><small>{auditMessage}</small></span>
+              <button type="button" className="icon-button" aria-label="Dismiss message" onClick={() => setAuditMessage(false)}>
+                <Icon name="close" size={17} />
+              </button>
+            </div>
+          )}
+
+          {auditError && (
+            <div className="api-notice" role="alert">
+              <span className="notice-icon"><Icon name="book" size={18} /></span>
+              <span><strong>Audit could not be completed</strong><small>{auditError}</small></span>
+            </div>
+          )}
+
+          {auditState === 'success' && (
+            allClaimsFailed ? (
+              <div className="api-notice" role="alert">
+                <span className="notice-icon"><Icon name="book" size={18} /></span>
+                <span>
+                  <strong>Verification unavailable</strong>
+                  <small>
+                    {quotaFailure
+                      ? "The backend's AI provider quota has been exceeded. Please ask the backend team to resolve the quota issue before retrying."
+                      : 'The backend could not verify any claims. Please ask the backend team to resolve the verification errors before retrying.'}
+                  </small>
+                </span>
+              </div>
+            ) : hasPartialClaimFailures ? (
+              <div className="api-notice" role="status">
+                <span className="notice-icon"><Icon name="book" size={18} /></span>
+                <span>
+                  <strong>Some claims were not verified</strong>
+                  <small>
+                    {quotaFailure
+                      ? 'The backend AI provider quota or rate limit was reached. Failed claims are excluded from verified results.'
+                      : 'Failed claims are marked Not verified and excluded from verified results.'}
+                  </small>
+                </span>
+              </div>
+            ) : (
+              <div className="api-notice" role="status">
+                <span className="notice-icon"><Icon name="book" size={18} /></span>
+                <span>
+                  <strong>{isDemo ? 'Demo audit response' : 'Audit results received'}</strong>
+                  <small>
+                    {isDemo ? 'The backend reported demo mode. ' : ''}
+                    {verifiedClaims.length} claim{verifiedClaims.length === 1 ? '' : 's'} returned without verification errors.
+                  </small>
+                </span>
+              </div>
+            )
+          )}
+
+          <div className="analysis-heading">
+            <div>
+              <span className="section-kicker">THE INVESTIGATION</span>
+              <h2>Evidence, in context</h2>
+            </div>
+            <span className="analysis-locked">
+              <Icon name="shield" size={15} />
+              {auditState === 'success' && auditClaims.length > 0
+                ? `${auditClaims.length} claims · ${verdictCounts.supported} supported · ${verdictCounts.contradicted} contradicted · ${verdictCounts.insufficient} insufficient · ${verdictCounts.ambiguous} ambiguous${failedClaims.length ? ` · ${failedClaims.length} errors` : ''}`
+                : 'Waiting for an audit'}
+            </span>
+          </div>
+
           <div className="analysis-grid">
             <section className="analysis-panel source-viewer" aria-labelledby="source-viewer-heading">
-              <div className="analysis-panel-head"><span className="panel-icon"><Icon name="file" size={18} /></span><div><h3 id="source-viewer-heading">Source document</h3><p>{pdf ? pdf.name : 'Your PDF will appear here'}</p></div>{pdf && <button className="replace-link viewer-change" type="button" onClick={() => inputRef.current?.click()}>Change</button>}</div>
-              {pdf && pdfUrl ? <div className="pdf-frame"><object data={pdfUrl} type="application/pdf" aria-label={`Preview of ${pdf.name}`}><div className="pdf-fallback"><Icon name="file" size={24} /><span>PDF preview isn’t available in this browser.</span><a href={pdfUrl} target="_blank" rel="noreferrer">Open document</a></div></object></div> : <div className="analysis-empty source-empty"><span className="empty-illustration"><Icon name="file" size={25} /></span><strong>Your source, in view</strong><p>Upload a PDF above to keep the original document close while you review.</p><span className="empty-rule" /></div>}
-              {pdf && <div className="document-meta"><span className="pdf-badge mini">PDF</span><span>{formatSize(pdf.size)}</span><span className="meta-dot" /> <span>Source document</span></div>}
+              <div className="analysis-panel-head">
+                <span className="panel-icon"><Icon name="file" size={18} /></span>
+                <div><h3 id="source-viewer-heading">Source document</h3><p>{pdf ? pdf.name : 'Your PDF will appear here'}</p></div>
+                {pdf && <button className="replace-link viewer-change" type="button" onClick={() => inputRef.current?.click()}>Change</button>}
+              </div>
+
+              {pdf && pdfUrl ? (
+                <div className="pdf-frame">
+                  <object data={pdfUrl} type="application/pdf" aria-label={`Preview of ${pdf.name}`}>
+                    <div className="pdf-fallback">
+                      <Icon name="file" size={24} />
+                      <span>PDF preview isn’t available in this browser.</span>
+                      <a href={pdfUrl} target="_blank" rel="noreferrer">Open document</a>
+                    </div>
+                  </object>
+                </div>
+              ) : (
+                <div className="analysis-empty source-empty">
+                  <span className="empty-illustration"><Icon name="file" size={25} /></span>
+                  <strong>Your source, in view</strong>
+                  <p>Upload a PDF above to keep the original document close while you review.</p>
+                  <span className="empty-rule" />
+                </div>
+              )}
+
+              {pdf && (
+                <div className="document-meta">
+                  <span className="pdf-badge mini">PDF</span>
+                  <span>{formatSize(pdf.size)}</span>
+                  <span className="meta-dot" />
+                  <span>Source document</span>
+                </div>
+              )}
             </section>
+
             <section className="analysis-panel claim-map" aria-labelledby="claim-map-heading">
-              <div className="analysis-panel-head"><span className="panel-icon"><Icon name="spark" size={18} /></span><div><h3 id="claim-map-heading">Claim investigation map</h3><p>{auditClaims.length ? auditClaims.length + ' claims returned by the backend' : 'Claims will be organized by evidence'}</p></div></div>
-              {auditState !== 'success' || auditClaims.length === 0 ? <div className="analysis-empty map-empty"><strong>{auditState === 'success' ? 'No claims were returned' : 'Claim map appears after an audit'}</strong><p>{auditState === 'success' ? 'The response did not contain any claim objects.' : 'This illustration shows the layout only. No claims have been analyzed.'}</p></div> : <>
-                {!allClaimsFailed && failedClaims.length === 0 && auditData?.overall && <div className="api-notice" role="status"><span className="notice-icon"><Icon name="book" size={18} /></span><span><strong>Audit summary</strong>{auditData.overall.summary && <small>{displayValue(auditData.overall.summary)}</small>}{auditData.overall.counts != null && <small>Counts: {displayValue(auditData.overall.counts)}</small>}{auditData.overall.source_coverage != null && <small>Source coverage: {displayValue(auditData.overall.source_coverage)}</small>}{auditData.overall.score != null && <small>Score: {displayValue(auditData.overall.score)}</small>}</span></div>}
-                {failedClaims.length > 0 && !allClaimsFailed && <p className="analysis-empty">Verified claims: {verifiedClaims.length} · Not verified: {failedClaims.length}</p>}
-                {auditClaims.map((claim, index) => {
-                  const failed = hasClaimError(claim)
-                  const evidence = Array.isArray(claim.evidence) ? claim.evidence : []
-                  return <div className="api-notice" role="group" aria-label={'Claim ' + (index + 1) + (failed ? ', not verified' : ', ' + (claim.verdict || 'result'))} key={claim.id ?? index}>
-                    <span className="notice-icon"><Icon name={failed ? 'close' : 'check'} size={18} /></span>
-                    <span><strong>{failed ? 'Not verified' : displayValue(claim.verdict) || 'Verdict not provided'}{claim.category && !failed ? ' · ' + displayValue(claim.category) : ''}</strong>
-                      {claim.text && <small>{displayValue(claim.text)}</small>}
-                      {failed ? <small>{isProviderQuotaError(claim) ? 'Verification failed because the backend AI provider quota or rate limit was exceeded.' : 'Verification failed. This claim is excluded from verified verdicts.'}</small> : <>
-                        {claim.explanation && <small>{displayValue(claim.explanation)}</small>}
-                        {claim.confidence != null && <small>Confidence: {displayValue(claim.confidence)}</small>}
-                        {evidence.map((item, evidenceIndex) => {
-                          const quote = evidenceQuote(item)
-                          const page = evidencePage(item)
-                          if (!quote) return null
-                          return <small key={evidenceIndex}>“{quote}”{page != null ? ' — page ' + displayValue(page) : ''}</small>
-                        })}
-                        {evidence.length === 0 && <small>No evidence was returned for this claim.</small>}
-                      </>}
-                    </span>
-                  </div>
-                })}
-              </>}
-              <div className="map-legend"><span><i className="legend-dot supported" /> Supported</span><span><i className="legend-dot contradicted" /> Contradicted</span><span><i className="legend-dot unclear" /> Ambiguous</span></div>
+              <div className="analysis-panel-head">
+                <span className="panel-icon"><Icon name="spark" size={18} /></span>
+                <div>
+                  <h3 id="claim-map-heading">Claim investigation map</h3>
+                  <p>{auditClaims.length ? `${auditClaims.length} claims returned by the backend` : 'Claims will be organized by evidence'}</p>
+                </div>
+              </div>
+
+              {auditState !== 'success' || auditClaims.length === 0 ? (
+                <div className="analysis-empty map-empty">
+                  <strong>{auditState === 'success' ? 'No claims were returned' : 'Claim map appears after an audit'}</strong>
+                  <p>{auditState === 'success' ? 'The response did not contain any claim objects.' : 'This illustration shows the layout only. No claims have been analyzed.'}</p>
+                </div>
+              ) : (
+                <>
+                  {!allClaimsFailed && failedClaims.length === 0 && auditData?.overall && (
+                    <div className="api-notice" role="status">
+                      <span className="notice-icon"><Icon name="book" size={18} /></span>
+                      <span>
+                        <strong>Audit summary</strong>
+                        {auditData.overall.summary && <small>{displayValue(auditData.overall.summary)}</small>}
+                        {auditData.overall.counts != null && <small>Counts: {displayValue(auditData.overall.counts)}</small>}
+                        {auditData.overall.source_coverage != null && <small>Source coverage: {displayValue(auditData.overall.source_coverage)}</small>}
+                        {auditData.overall.score != null && <small>Score: {displayValue(auditData.overall.score)}</small>}
+                      </span>
+                    </div>
+                  )}
+
+                  {failedClaims.length > 0 && !allClaimsFailed && (
+                    <p className="analysis-empty">
+                      Verified claims: {verifiedClaims.length} · Not verified: {failedClaims.length}
+                    </p>
+                  )}
+
+                  {auditClaims.map((claim, index) => {
+                    const failed = hasClaimError(claim)
+                    const evidence = Array.isArray(claim.evidence) ? claim.evidence : []
+
+                    return (
+                      <div
+                        className="api-notice"
+                        role="group"
+                        aria-label={`Claim ${index + 1}${failed ? ', not verified' : `, ${claim.verdict || 'result'}`}`}
+                        key={claim.id ?? index}
+                      >
+                        <span className="notice-icon">
+                          <Icon name={failed ? 'close' : 'check'} size={18} />
+                        </span>
+                        <span>
+                          <strong>
+                            {failed
+                              ? 'Not verified'
+                              : displayValue(claim.verdict) || 'Verdict not provided'}
+                            {claim.category && !failed ? ` · ${displayValue(claim.category)}` : ''}
+                          </strong>
+
+                          {claim.text && <small>{displayValue(claim.text)}</small>}
+
+                          {failed ? (
+                            <small>
+                              {isProviderQuotaError(claim)
+                                ? 'Verification failed because the backend AI provider quota or rate limit was exceeded.'
+                                : 'Verification failed. This claim is excluded from verified verdicts.'}
+                            </small>
+                          ) : (
+                            <>
+                              {claim.explanation && <small>{displayValue(claim.explanation)}</small>}
+                              {claim.confidence != null && <small>Confidence: {displayValue(claim.confidence)}</small>}
+
+                              {evidence.map((item, evidenceIndex) => {
+                                const quote = evidenceQuote(item)
+                                const page = evidencePage(item)
+
+                                if (!quote) return null
+
+                                return (
+                                  <small key={evidenceIndex}>
+                                    “{quote}”
+                                    {page != null ? ` — page ${displayValue(page)}` : ''}
+                                  </small>
+                                )
+                              })}
+
+                              {evidence.length === 0 && <small>No evidence was returned for this claim.</small>}
+                            </>
+                          )}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </>
+              )}
+
+              {/* Updated legend: all four verdicts with readable spacing */}
+              <div className="map-legend" aria-label="Verdict legend">
+                <span><i className="legend-dot supported" /> Supported</span>
+                <span><i className="legend-dot contradicted" /> Contradicted</span>
+                <span><i className="legend-dot insufficient" /> Insufficient</span>
+                <span><i className="legend-dot unclear" /> Ambiguous</span>
+              </div>
             </section>
+
             <section className="analysis-panel evidence-panel" aria-labelledby="evidence-heading">
-              <div className="analysis-panel-head"><span className="panel-icon"><Icon name="book" size={18} /></span><div><h3 id="evidence-heading">Evidence inspector</h3><p>Source passages tied to a claim</p></div></div>
-              {auditState === 'success' ? <div className="analysis-empty evidence-empty"><span className="empty-illustration"><Icon name="book" size={23} /></span><strong>Evidence is shown with each claim</strong><p>Only quotations and page numbers returned by the backend are displayed.</p></div> : <div className="analysis-empty evidence-empty"><span className="empty-illustration"><Icon name="book" size={23} /></span><strong>Nothing selected yet</strong><p>When claims are available, select one to see its source passage and page reference.</p><span className="evidence-skeleton"><i /><i /><i /></span></div>}
-              <div className="evidence-foot"><Icon name="shield" size={14} /> Source passages will be shown verbatim.</div>
+              <div className="analysis-panel-head">
+                <span className="panel-icon"><Icon name="book" size={18} /></span>
+                <div><h3 id="evidence-heading">Evidence inspector</h3><p>Source passages tied to a claim</p></div>
+              </div>
+
+              {auditState === 'success' ? (
+                <div className="analysis-empty evidence-empty">
+                  <span className="empty-illustration"><Icon name="book" size={23} /></span>
+                  <strong>Evidence is shown with each claim</strong>
+                  <p>Only quotations and page numbers returned by the backend are displayed.</p>
+                </div>
+              ) : (
+                <div className="analysis-empty evidence-empty">
+                  <span className="empty-illustration"><Icon name="book" size={23} /></span>
+                  <strong>Nothing selected yet</strong>
+                  <p>When claims are available, select one to see its source passage and page reference.</p>
+                  <span className="evidence-skeleton"><i /><i /><i /></span>
+                </div>
+              )}
+
+              <div className="evidence-foot">
+                <Icon name="shield" size={14} />
+                Source passages will be shown verbatim.
+              </div>
             </section>
           </div>
-          <div className="workspace-bottom"><span>SECOND OPINION <i /> A MORE THOUGHTFUL WAY TO REVIEW AI</span><span>Built for careful readers <span className="tiny-spark">✳</span></span></div>
+
+          <div className="workspace-bottom">
+            <span>SECOND OPINION <i /> A MORE THOUGHTFUL WAY TO REVIEW AI</span>
+            <span>Built for careful readers <span className="tiny-spark">✳</span></span>
+          </div>
         </section>
 
         <section className="how-section" id="how-it-works">
-          <div className="how-heading"><span className="section-kicker">A SIMPLE SECOND LOOK</span><h2>From confident answer<br />to <em>grounded understanding.</em></h2></div>
+          <div className="how-heading">
+            <span className="section-kicker">A SIMPLE SECOND LOOK</span>
+            <h2>From confident answer<br /><em>to grounded understanding.</em></h2>
+          </div>
+
           <div className="how-steps">
-            <div className="how-step"><span className="step-number">01</span><span className="step-icon"><Icon name="file" size={19} /></span><h3>Bring the source</h3><p>Start with the PDF you trust, whether it’s a paper, report, or article.</p></div>
+            <div className="how-step">
+              <span className="step-number">01</span>
+              <span className="step-icon"><Icon name="file" size={19} /></span>
+              <h3>Bring the source</h3>
+              <p>Start with the PDF you trust, whether it’s a paper, report, or article.</p>
+            </div>
             <div className="step-connector" aria-hidden="true">··········→</div>
-            <div className="how-step"><span className="step-number">02</span><span className="step-icon"><Icon name="spark" size={19} /></span><h3>Add the answer</h3><p>Paste an AI response and a question you’d like the review to consider.</p></div>
+            <div className="how-step">
+              <span className="step-number">02</span>
+              <span className="step-icon"><Icon name="spark" size={19} /></span>
+              <h3>Add the answer</h3>
+              <p>Paste an AI response and a question you’d like the review to consider.</p>
+            </div>
             <div className="step-connector" aria-hidden="true">··········→</div>
-            <div className="how-step"><span className="step-number">03</span><span className="step-icon"><Icon name="shield" size={19} /></span><h3>See what holds up</h3><p>Claims are checked against the source, so you can decide with more context.</p></div>
+            <div className="how-step">
+              <span className="step-number">03</span>
+              <span className="step-icon"><Icon name="shield" size={19} /></span>
+              <h3>See what holds up</h3>
+              <p>Claims are checked against the source, so you can decide with more context.</p>
+            </div>
           </div>
         </section>
       </main>
-      <footer className="page-footer"><a className="footer-brand" href="#top"><span className="brand-mark small"><Icon name="spark" size={15} /></span> second<span>opinion</span></a><span>Less guesswork. More ground truth.</span><span className="footer-proto">A thoughtful little prototype <span>✳</span></span></footer>
+
+      <footer className="page-footer">
+        <a className="footer-brand" href="#top">
+          <span className="brand-mark small"><Icon name="spark" size={15} /></span>
+          second<span>opinion</span>
+        </a>
+        <span>Less guesswork. More ground truth.</span>
+        <span className="footer-proto">A thoughtful little prototype <span>✳</span></span>
+      </footer>
     </div>
   )
 }
