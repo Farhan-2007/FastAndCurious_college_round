@@ -1,3 +1,4 @@
+
 """Check claims against evidence passages supplied by the caller.
 
 The LLM never supplies page numbers. It cites a passage by number and quotes it;
@@ -22,7 +23,7 @@ log = logging.getLogger(__name__)
 MAX_EVIDENCE_CHARS = 12_000
 
 
-# ---- prompt (tune here) ----
+# ---- prompt ----
 
 VERIFY_SYSTEM = """You are a strict fact-checking auditor. Check each claim ONLY against the numbered evidence passages provided.
 
@@ -53,12 +54,6 @@ Return exactly one result per claim."""
 def verify_claims_batch(claims, evidence, client: LLMClient = None) -> dict:
     """Verify multiple claims in one LLM request.
 
-    claims:
-        list of str | {'id','text'} | Claim
-
-    evidence:
-        list of str | {'text','page'?,'source'?} | EvidencePassage
-
     Returns:
         {
             "results": [ClaimResult as dict, ...],
@@ -70,7 +65,6 @@ def verify_claims_batch(claims, evidence, client: LLMClient = None) -> dict:
     """
     claims = coerce_claims(claims)
     passages = coerce_passages(evidence)
-
     warnings = []
 
     if not claims:
@@ -79,7 +73,6 @@ def verify_claims_batch(claims, evidence, client: LLMClient = None) -> dict:
             "warnings": ["No claims supplied."],
         }
 
-    # No evidence at all -> insufficient.
     if not passages:
         return {
             "results": [
@@ -118,7 +111,6 @@ def verify_claims_batch(claims, evidence, client: LLMClient = None) -> dict:
 
     except LLMError as e:
         log.warning("verification failed: %s", e)
-
         err = f"Verification failed: {e}"
 
         return {
@@ -146,38 +138,22 @@ def verify_claims_batch(claims, evidence, client: LLMClient = None) -> dict:
 
         try:
             if item is None:
-                raise ValueError(
-                    "no result returned for this claim"
-                )
+                raise ValueError("no result returned for this claim")
 
             results.append(
-                _build_result(
-                    c,
-                    item,
-                    passages,
-                )
+                _build_result(c, item, passages)
             )
 
         except (ValueError, TypeError, KeyError) as e:
-            warnings.append(
-                f"Claim {c.id}: {e}"
-            )
-
+            warnings.append(f"Claim {c.id}: {e}")
             results.append(
-                _failed(
-                    c,
-                    f"Verification failed: {e}",
-                )
+                _failed(c, f"Verification failed: {e}")
             )
 
     return {
-        "results": [
-            r.to_dict()
-            for r in results
-        ],
+        "results": [r.to_dict() for r in results],
         "warnings": warnings,
     }
-
 
 
 def verify_claims(
@@ -185,29 +161,51 @@ def verify_claims(
     evidence_by_claim,
     client: LLMClient = None,
 ) -> dict:
-    """Verify claims without allowing evidence to cross between claims."""
+    """Verify claims independently against their own evidence passages.
+
+    Returns:
+        {"claims": [verified claim dictionaries, ...]}
+    """
     items = _check_claims(claims)
 
     if not isinstance(evidence_by_claim, dict):
-        raise ValueError("evidence_by_claim must be a dict keyed by claim id")
+        raise ValueError(
+            "evidence_by_claim must be a dict keyed by claim id"
+        )
+
     client = client or LLMClient()
     output = []
 
     for c in items:
         passages = evidence_by_claim.get(c["id"])
+
         if passages is None:
             passages = evidence_by_claim.get(str(c["id"]))
+
         try:
-            r = analyze_claim(c["text"], passages or [], client=client, claim_id=c["id"])
-        except Exception as e:  # bad passage data etc. -> reported, never faked
+            result = analyze_claim(
+                c["text"],
+                passages or [],
+                client=client,
+                claim_id=c["id"],
+            )
+        except Exception as e:
+            # Record a failure for this claim and continue with the rest.
             log.warning("claim %s failed: %s", c["id"], e)
-            return _contract(c, {"verdict": "ambiguous", "category": "none",
-                                 "confidence": 0.0, "evidence": [],
-                                 "explanation": "Could not verify this claim.",
-                                 "error": f"Verification failed: {e}"})
-        return _contract(c, r)
+
+            result = {
+                "verdict": "ambiguous",
+                "category": "none",
+                "confidence": 0.0,
+                "evidence": [],
+                "explanation": "Could not verify this claim.",
+                "error": f"Verification failed: {e}",
+            }
+
+        output.append(_contract(c, result))
 
     return {"claims": output}
+
 
 def _check_claims(claims) -> list:
     if not isinstance(claims, (list, tuple)):
@@ -238,25 +236,31 @@ def _check_claims(claims) -> list:
             )
 
         if cid in ids:
-            raise ValueError(
-                f"duplicate claim id {cid}"
-            )
+            raise ValueError(f"duplicate claim id {cid}")
 
         ids.add(cid)
-
-        out.append({
-            "id": cid,
-            "text": text,
-        })
+        out.append({"id": cid, "text": text})
 
     return out
 
 
 def _contract(c, r) -> dict:
-    out = {"id": c["id"], "text": c["text"], "verdict": r["verdict"],
-           "category": r["category"], "confidence": r["confidence"],
-           "explanation": r["explanation"],
-           "evidence": [{"quote": q["quote"], "page": q["page"]} for q in r["evidence"]]}
+    out = {
+        "id": c["id"],
+        "text": c["text"],
+        "verdict": r["verdict"],
+        "category": r["category"],
+        "confidence": r["confidence"],
+        "explanation": r["explanation"],
+        "evidence": [
+            {
+                "quote": q["quote"],
+                "page": q["page"],
+            }
+            for q in r["evidence"]
+        ],
+    }
+
     if r.get("error"):
         out["error"] = r["error"]
 
@@ -266,11 +270,7 @@ def _contract(c, r) -> dict:
 # ---- internals ----
 
 def _norm(s: str) -> str:
-    return re.sub(
-        r"\s+",
-        " ",
-        s,
-    ).strip().lower()
+    return re.sub(r"\s+", " ", s).strip().lower()
 
 
 def _fit_budget(passages):
@@ -295,89 +295,50 @@ def _build_user(claims, passages) -> str:
     )
 
     cl = "\n".join(
-        f"{c.id}. "
-        f"{c.text.replace('</claims>', '< /claims>')}"
+        f"{c.id}. {c.text.replace('</claims>', '< /claims>')}"
         for c in claims
     )
 
     return (
-        f"<evidence>\n"
+        "<evidence>\n"
         f"{ev}"
-        f"</evidence>\n\n"
-        f"<claims>\n"
+        "</evidence>\n\n"
+        "<claims>\n"
         f"{cl}"
-        f"\n</claims>"
+        "\n</claims>"
     )
 
 
-def _build_result(
-    claim,
-    item,
-    passages,
-) -> ClaimResult:
+def _build_result(claim, item, passages) -> ClaimResult:
+    verdict = str(item.get("verdict", "")).strip().lower()
+    category = str(item.get("category", "")).strip().lower()
 
-    verdict = str(
-        item.get("verdict", "")
-    ).strip().lower()
-
-    category = str(
-        item.get("category", "")
-    ).strip().lower()
-
-    if (
-        verdict not in VERDICTS
-        or category not in CATEGORIES
-    ):
+    if verdict not in VERDICTS or category not in CATEGORIES:
         raise ValueError(
-            f"invalid verdict/category "
-            f"{verdict!r}/{category!r}"
+            f"invalid verdict/category {verdict!r}/{category!r}"
         )
 
     try:
-        conf = max(
-            0.0,
-            min(
-                1.0,
-                float(item.get("confidence")),
-            ),
-        )
-
+        conf = max(0.0, min(1.0, float(item.get("confidence"))))
     except (TypeError, ValueError):
         conf = 0.0
 
-    explanation = str(
-        item.get("explanation", "")
-    ).strip()
+    explanation = str(item.get("explanation", "")).strip()
+    quotes = _verified_quotes(item.get("evidence"), passages)
 
-    quotes = _verified_quotes(
-        item.get("evidence"),
-        passages,
-    )
-
-    # Keep verdict and category consistent.
     if verdict == "supported":
         category = "none"
-
-    elif (
-        category == "none"
-        and verdict != "ambiguous"
-    ):
+    elif category == "none" and verdict != "ambiguous":
         category = (
             "hallucination"
             if verdict == "contradicted"
             else "unsupported"
         )
 
-    # A firm verdict with no verifiable quote is effectively
-    # invented evidence.
-    if (
-        verdict in ("supported", "contradicted")
-        and not quotes
-    ):
+    if verdict in ("supported", "contradicted") and not quotes:
         verdict = "ambiguous"
         category = "none"
         conf = min(conf, 0.3)
-
         explanation += (
             " (Downgraded: no quote could be verified "
             "in the supplied evidence.)"
@@ -397,53 +358,42 @@ def _build_result(
 def _verified_quotes(raw, passages) -> list:
     quotes = []
 
-    for e in raw if isinstance(raw, list) else []:
-
-        if not isinstance(e, dict):
+    for evidence_item in raw if isinstance(raw, list) else []:
+        if not isinstance(evidence_item, dict):
             continue
 
-        q = _norm(
-            str(e.get("quote", ""))
-        )
+        quote = _norm(str(evidence_item.get("quote", "")))
 
-        if not q:
+        if not quote:
             continue
 
         order = []
 
-        # Check the cited passage first.
         try:
-            pid = int(
-                e.get("passage_id")
-            )
+            passage_id = int(evidence_item.get("passage_id"))
 
-            if 1 <= pid <= len(passages):
-                order.append(pid - 1)
+            if 1 <= passage_id <= len(passages):
+                order.append(passage_id - 1)
 
         except (TypeError, ValueError):
             pass
 
-        # Then check all other passages.
         order += [
-            i
-            for i in range(len(passages))
+            i for i in range(len(passages))
             if i not in order
         ]
 
         for i in order:
-            if q in _norm(passages[i].text):
-                p = passages[i]
+            passage = passages[i]
 
+            if quote in _norm(passage.text):
                 quotes.append(
                     EvidenceQuote(
-                        quote=str(
-                            e["quote"]
-                        ).strip(),
-                        page=p.page,
-                        source=p.source,
+                        quote=str(evidence_item["quote"]).strip(),
+                        page=passage.page,
+                        source=passage.source,
                     )
                 )
-
                 break
 
     return quotes
@@ -456,7 +406,6 @@ def _fixed(
     conf,
     explanation,
 ) -> ClaimResult:
-
     return ClaimResult(
         claim.id,
         claim.text,
@@ -467,16 +416,8 @@ def _fixed(
     )
 
 
-def _failed(
-    claim,
-    error,
-) -> ClaimResult:
-    """Verification could not run.
-
-    Verdict is ambiguous with confidence 0 and an error message.
-    Callers should check error before trusting the verdict.
-    """
-
+def _failed(claim, error) -> ClaimResult:
+    """Return an ambiguous result when verification fails."""
     return ClaimResult(
         claim.id,
         claim.text,
