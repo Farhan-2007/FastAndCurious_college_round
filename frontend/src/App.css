@@ -315,3 +315,98 @@ button:focus-visible, a:focus-visible { outline-color: #32DFFF; }
 .dropzone .upload-icon { color: #32DFFF; background: #102744; border-color: #35598A; }
 .text-button:disabled { color: #9EB0C8; opacity: 1; }
 .optional-icon { color: #32DFFF; background: #102744; border-color: #35598A; }
+
+/* Theme refinement: dark editorial + warm orange accent */
+:root {
+  --accent-orange: #FF8A3D;
+  --accent-orange-hover: #FFAB70;
+}
+
+/* Brand and active navigation */
+.brand-mark,
+.brand-mark.small {
+  background: var(--accent-orange);
+  border-color: var(--accent-orange);
+  color: #10151B;
+}
+
+.nav-link.active {
+  box-shadow: inset 0 -3px var(--accent-orange);
+}
+
+.nav-link:hover,
+.nav-link.active {
+  border-color: #53616E;
+}
+
+/* Headings and primary actions */
+.hero-section h1 em,
+.how-heading h2 em {
+  color: var(--accent-orange);
+}
+
+.hero-cta,
+.audit-button {
+  color: #10151B;
+  background: var(--accent-orange);
+  border-color: var(--accent-orange);
+}
+
+.hero-cta:hover,
+.audit-button:not(:disabled):hover {
+  color: #10151B;
+  background: var(--accent-orange-hover);
+  border-color: var(--accent-orange-hover);
+}
+
+/* Keep cyan for secondary details and keyboard accessibility */
+button:focus-visible,
+a:focus-visible {
+  outline-color: #32DFFF;
+}
+
+/* Analysis workspace: balanced columns and consistent panel sizing */
+.analysis-grid {
+  grid-template-columns:
+    minmax(0, 0.95fr)
+    minmax(0, 1.1fr)
+    minmax(0, 0.95fr);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.analysis-grid > .analysis-panel {
+  box-sizing: border-box;
+  min-width: 0;
+  height: auto;
+  min-height: 560px;
+}
+
+.analysis-panel-head {
+  min-width: 0;
+}
+
+.analysis-panel-head h3,
+.analysis-panel-head p {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1180px) {
+  .analysis-grid {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  }
+
+  .analysis-grid > .analysis-panel {
+    min-height: 440px;
+  }
+}
+
+@media (max-width: 760px) {
+  .analysis-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .analysis-grid > .analysis-panel {
+    min-height: auto;
+  }
+}
