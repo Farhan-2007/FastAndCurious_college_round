@@ -19,6 +19,7 @@ dist/
 # Logs and generated output
 logs/
 *.log
+audit_debug.log
 
 # Editors and operating-system files
 .vscode/

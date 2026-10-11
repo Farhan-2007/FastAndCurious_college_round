@@ -6,6 +6,7 @@ we confirm the quote really occurs in that passage and take the page from the
 caller's own passage data.
 """
 import logging
+import os
 import re
 
 from .llm_client import LLMClient, LLMError
@@ -166,9 +167,9 @@ def verify_claims(
     Returns:
         {"claims": [verified claim dictionaries, ...]}
     """
-    items = _check_claims(claims)
+        items = _check_claims(claims)
 
-        if not isinstance(evidence_by_claim, dict):
+    if not isinstance(evidence_by_claim, dict):
         raise ValueError(
             "evidence_by_claim must be a dict keyed by claim id"
         )

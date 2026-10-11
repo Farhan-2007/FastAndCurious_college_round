@@ -16,6 +16,13 @@ from ai_core.claim_extractor import decompose_claims
 from ai_core.evidence_retriever import retrieve_evidence
 from ai_core.verifier import verify_claims
 
+from backend.audit_utils import compute_span, validate_quote
+from ai_core.advanced_features import (
+    assess_source_quality,
+    build_heatmap,
+    generate_corrected_answer,
+)
+
 
 # --------------------------------------------------
 # Configuration
@@ -128,6 +135,7 @@ async def create_audit(
     pdf: UploadFile = File(...),
     answer: str = Form(...),
     question: str = Form(""),
+     include_corrected_answer: bool = Form(False),
 ):
     audit_id = str(uuid4())
 
@@ -331,6 +339,53 @@ async def create_audit(
                 "total_claims": len(verified_claims),
             },
         )
+    # Normalize claim fields for the API and frontend.
+    # Compute answer spans and validate evidence against the uploaded PDF.
+    for claim in verified_claims:
+        claim_id = claim.get("id", claim.get("claim_id"))
+        claim_text = claim.get("text", claim.get("claim_text", ""))
+
+        claim["id"] = claim_id
+        claim["text"] = claim_text
+
+        span = compute_span(claim_text, answer)
+        claim["span"] = (
+            span
+            if span is not None
+            else {"start": 0, "end": 0}
+        )
+
+        # Member 3's current interface may not return importance.
+        claim.setdefault("importance", 3)
+
+        validated_evidence = []
+
+        for item in claim.get("evidence", []):
+            if not isinstance(item, dict):
+                continue
+
+            quote = item.get("quote")
+            if not isinstance(quote, str) or not quote.strip():
+                continue
+
+            quote_is_valid, actual_page = validate_quote(
+                quote,
+                pdf_chunks,
+            )
+
+            if quote_is_valid and actual_page is not None:
+                clean_evidence = {
+                    "quote": quote,
+                    "page": actual_page,
+                }
+
+                if item.get("source"):
+                    clean_evidence["source"] = item["source"]
+
+                validated_evidence.append(clean_evidence)
+
+        # Only evidence found in the original PDF is kept.
+        claim["evidence"] = validated_evidence
 
     # Count verdicts only after verification succeeds.
     counts = {
@@ -366,6 +421,96 @@ async def create_audit(
         for claim in verified_claims
         if not claim.get("evidence")
     )
+        # Ensure claims have the fields expected by the frontend.
+    # Also recalculate spans and validate evidence quotes against the PDF.
+    for claim in verified_claims:
+        claim_id = claim.get("id", claim.get("claim_id"))
+        claim_text = claim.get("text", claim.get("claim_text", ""))
+
+        claim["id"] = claim_id
+        claim["text"] = claim_text
+
+        span = compute_span(claim_text, answer)
+        claim["span"] = span if span is not None else {
+            "start": 0,
+            "end": 0,
+        }
+
+        # The current AI claim interface may not return importance.
+        # Use the agreed temporary default if it is missing.
+        claim.setdefault("importance", 3)
+
+        valid_evidence = []
+
+        for item in claim.get("evidence", []):
+            if not isinstance(item, dict):
+                continue
+
+            quote = item.get("quote")
+            if not isinstance(quote, str) or not quote.strip():
+                continue
+
+            quote_is_valid, actual_page = validate_quote(
+                quote,
+                pdf_chunks,
+            )
+
+            if quote_is_valid and actual_page is not None:
+                clean_item = {
+                    "quote": quote,
+                    "page": actual_page,
+                }
+
+                if item.get("source"):
+                    clean_item["source"] = item["source"]
+
+                valid_evidence.append(clean_item)
+
+        # Discard quotes that are not found in the uploaded PDF.
+        claim["evidence"] = valid_evidence
+
+    # Build a frontend-ready hallucination heatmap.
+    try:
+        heatmap = build_heatmap(verified_claims)
+    except Exception:
+        logger.exception("Could not build the hallucination heatmap")
+        heatmap = []
+
+    # Assess source/evidence coverage. This is a heuristic, not an
+    # authenticity check.
+    try:
+        source_quality = assess_source_quality(
+            verified_claims,
+            pdf_chunks,
+        )
+    except Exception:
+        logger.exception("Could not assess source quality")
+        source_quality = {
+            "assessment_type": "unavailable",
+            "issues": ["Source-quality assessment failed."],
+            "limitations": [],
+        }
+
+    # Do not spend an additional LLM call unless the client asks for this.
+    corrected_answer_result = {
+        "corrected_answer": None,
+        "status": "not_requested",
+        "message": "Corrected answer generation was not requested.",
+    }
+
+    if include_corrected_answer:
+        try:
+            corrected_answer_result = generate_corrected_answer(
+                original_answer=answer,
+                claims=verified_claims,
+            )
+        except Exception:
+            logger.exception("Could not generate a corrected answer")
+            corrected_answer_result = {
+                "corrected_answer": None,
+                "status": "failed",
+                "message": "The corrected answer could not be generated.",
+            }
 
     # Mark the audit complete only after all verification succeeds.
     AUDIT_STATUS[audit_id] = {
@@ -394,6 +539,9 @@ async def create_audit(
             },
         },
         "claims": verified_claims,
+        "heatmap": heatmap,
+        "source_quality": source_quality,
+        "corrected_answer": corrected_answer_result,
         "note": (
             f"{pages_without_text} page(s) with no extractable "
             "text were skipped."
