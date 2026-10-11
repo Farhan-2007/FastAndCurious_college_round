@@ -125,7 +125,7 @@ def verify_claims(claims, evidence_by_claim, client: LLMClient = None) -> dict:
     mock_mode = os.getenv("SO_MOCK_VERIFICATION", "").lower() == "true"
     if not mock_mode and client is None:
        client = LLMClient()
-    client = client or LLMClient()
+    
 
     def one(c):
         passages = evidence_by_claim.get(c["id"])
