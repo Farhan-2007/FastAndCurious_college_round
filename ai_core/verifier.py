@@ -168,12 +168,16 @@ def verify_claims(
     """
     items = _check_claims(claims)
 
-    if not isinstance(evidence_by_claim, dict):
+        if not isinstance(evidence_by_claim, dict):
         raise ValueError(
             "evidence_by_claim must be a dict keyed by claim id"
         )
 
-    client = client or LLMClient()
+    mock_mode = os.getenv("SO_MOCK_VERIFICATION", "").lower() == "true"
+
+    if not mock_mode and client is None:
+        client = LLMClient()
+
     output = []
 
     for c in items:
