@@ -1,5 +1,28 @@
-.vscode/
-.env
-audit_debug.log
+# Python caches and virtual environments
 __pycache__/
 *.py[cod]
+.venv/
+venv/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+!.env.example.*
+
+# Node.js dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Logs and generated output
+logs/
+*.log
+audit_debug.log
+
+# Editors and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
