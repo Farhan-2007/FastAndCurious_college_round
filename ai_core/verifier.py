@@ -167,7 +167,10 @@ def verify_claims(
     Returns:
         {"claims": [verified claim dictionaries, ...]}
     """
-        items = _check_claims(claims)
+
+    from .evidence_analyzer import analyze_claim
+
+    items = _check_claims(claims)
 
     if not isinstance(evidence_by_claim, dict):
         raise ValueError(
