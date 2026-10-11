@@ -1,6 +1,12 @@
+
 import json
 import os
+import re
 import time
+
+from dotenv import load_dotenv
+
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 import requests
 from dotenv import load_dotenv
@@ -49,16 +55,63 @@ class LLMClient:
                 )
 
                 if response.status_code == 429:
+                    try:
+                        error_data = response.json()
+                        error = error_data.get("error", {})
+                        message = error.get("message", "")
+                    except (ValueError, TypeError):
+                        message = response.text[:500]
+
+                    lower_message = message.lower()
+
+                    # Daily quota errors should not be retried.
+                    if (
+                        "tokens per day" in lower_message
+                        or "requests per day" in lower_message
+                        or re.search(r"\btpd\b", lower_message)
+                        or re.search(r"\brpd\b", lower_message)
+                    ):
+                        raise LLMError(
+                            "Groq daily quota exceeded. Wait for the quota "
+                            "to reset or choose a model with available quota. "
+                            f"Details: {message[:300]}"
+    )
+                        raise LLMError(
+                            "Groq daily quota exceeded. Wait for the quota "
+                            "to reset or choose a model with available quota. "
+                            f"Details: {message[:300]}"
+                        )
+
+                    # Retry temporary rate limits a limited number of times.
                     if attempt < 2:
                         retry_after = response.headers.get("Retry-After")
+                        wait_seconds = None
 
                         try:
-                            wait_seconds = float(retry_after)
+                            if retry_after is not None:
+                                wait_seconds = float(retry_after)
                         except (TypeError, ValueError):
+                            pass
+
+                        if wait_seconds is None:
+                            match = re.search(
+                                r"try again in ([\d.]+)\s*s",
+                                message,
+                                re.IGNORECASE,
+                            )
+                            if match:
+                                wait_seconds = float(match.group(1))
+
+                        if wait_seconds is None:
                             wait_seconds = 15 * (attempt + 1)
 
                         time.sleep(min(max(wait_seconds, 1), 60))
                         continue
+
+                    raise LLMError(
+                        "Groq rate limit exceeded after retries. "
+                        f"Details: {message[:300]}"
+                    )
 
                 if response.status_code in (500, 502, 503, 504):
                     if attempt < 2:
@@ -78,8 +131,8 @@ class LLMClient:
 
                 if choice.get("finish_reason") == "length":
                     raise LLMError(
-                        "Groq response was truncated because the token limit was reached. "
-                        "Increase max_tokens or reduce the prompt length."
+                        "Groq response was truncated because the token limit "
+                        "was reached. Increase max_tokens or reduce the prompt length."
                     )
 
                 if not isinstance(content, str) or not content.strip():

@@ -4,6 +4,8 @@ The LLM never supplies page numbers. It cites a passage by number and quotes it;
 we confirm the quote really occurs in that passage and take the page from the
 caller's own passage data.
 """
+
+import os
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
@@ -13,7 +15,7 @@ from .schemas import (CATEGORIES, VERDICTS, ClaimResult, EvidenceQuote,
                       coerce_claims, coerce_passages)
 
 log = logging.getLogger(__name__)
-MAX_EVIDENCE_CHARS = 60_000
+MAX_EVIDENCE_CHARS = 12_000
 
 # ---- prompt (tune here) ----
 VERIFY_SYSTEM = """You are a strict fact-checking auditor. Check each claim ONLY against the numbered evidence passages provided.
@@ -97,7 +99,7 @@ def verify_claims_batch(claims, evidence, client: LLMClient = None) -> dict:
             results.append(_failed(c, f"Verification failed: {e}"))
     return {"results": [r.to_dict() for r in results], "warnings": warnings}
 
-MAX_WORKERS = 2  # parallel LLM calls (one per claim)
+MAX_WORKERS = 1 # parallel LLM calls (one per claim)
 
 
 def verify_claims(claims, evidence_by_claim, client: LLMClient = None) -> dict:
@@ -120,7 +122,10 @@ def verify_claims(claims, evidence_by_claim, client: LLMClient = None) -> dict:
     items = _check_claims(claims)
     if not isinstance(evidence_by_claim, dict):
         raise ValueError("evidence_by_claim must be a dict keyed by claim id")
-    client = client or LLMClient()
+    mock_mode = os.getenv("SO_MOCK_VERIFICATION", "").lower() == "true"
+    if not mock_mode and client is None:
+       client = LLMClient()
+    
 
     def one(c):
         passages = evidence_by_claim.get(c["id"])
@@ -134,7 +139,9 @@ def verify_claims(claims, evidence_by_claim, client: LLMClient = None) -> dict:
                                  "confidence": 0.0, "evidence": [],
                                  "explanation": "Could not verify this claim.",
                                  "error": f"Verification failed: {e}"})
-        return _contract(c, r)
+        print("ANALYZER RESULT:", r)
+        out = _contract(c, r)
+        return out
 
     with ThreadPoolExecutor(max_workers=min(MAX_WORKERS, len(items) or 1)) as pool:
         return {"claims": list(pool.map(one, items))}
@@ -161,7 +168,7 @@ def _check_claims(claims) -> list:
 
 
 def _contract(c, r) -> dict:
-    out = {"id": c["id"], "text": c["text"], "verdict": r["verdict"],
+    out = {"id": c["id"], "text": c["text"], "importance": 3 ,"verdict": r["verdict"],
            "category": r["category"], "confidence": r["confidence"],
            "explanation": r["explanation"],
            "evidence": [{"quote": q["quote"], "page": q["page"]} for q in r["evidence"]]}

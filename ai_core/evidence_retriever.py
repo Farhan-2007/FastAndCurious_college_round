@@ -69,8 +69,17 @@ def retrieve_evidence(claim: dict, chunks: list, top_k: int = 5) -> list:
         if score > 0:
             scored.append((-score, page, order, raw))
     scored.sort()  # best score first; ties -> lower page, then input order
-    return [{"page": page, "text": raw} for _, page, _, raw in scored[:top_k]]
 
+    if not scored:
+        return [
+            {"page": page, "text": raw}
+            for page, raw, _ in docs[:top_k]
+        ]
+
+    return [
+        {"page": page, "text": raw}
+        for _, page, _, raw in scored[:top_k]
+    ]
 
 def _tokens(text: str) -> list:
     out = []
