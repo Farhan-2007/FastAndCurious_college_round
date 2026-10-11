@@ -1,3 +1,4 @@
+
 # Python
 __pycache__/
 *.py[cod]
@@ -18,3 +19,6 @@ dist/
 
 # Logs
 *.log
+
+# VS Code
+.vscode/
