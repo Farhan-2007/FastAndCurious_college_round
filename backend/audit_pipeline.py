@@ -28,7 +28,13 @@ VALID_CATEGORIES = {
 }
 
 
-def run_audit_pipeline(answer, pdf_chunks, total_pages, progress_callback=None, include_corrected_answer=False,):
+def run_audit_pipeline(
+    answer,
+    pdf_chunks,
+    total_pages,
+    progress_callback=None,
+    include_corrected_answer=False,
+):
     """
     Run claim decomposition, evidence retrieval, verification,
     evidence-quote validation, span calculation, and report calculation.
@@ -52,7 +58,9 @@ def run_audit_pipeline(answer, pdf_chunks, total_pages, progress_callback=None, 
 
     for index, claim in enumerate(claims, start=1):
         if not isinstance(claim, dict):
-            logger.warning("Skipping malformed claim at position %s", index)
+            logger.warning(
+                "Skipping malformed claim at position %s", index
+            )
             continue
 
         claim_id = claim.get("id", index)
@@ -64,8 +72,7 @@ def run_audit_pipeline(answer, pdf_chunks, total_pages, progress_callback=None, 
 
         if not isinstance(claim_text, str) or not claim_text.strip():
             logger.warning(
-                "Skipping claim %r with empty text",
-                claim_id,
+                "Skipping claim %r with empty text", claim_id
             )
             continue
 
@@ -195,7 +202,7 @@ def run_audit_pipeline(answer, pdf_chunks, total_pages, progress_callback=None, 
         importance = max(1, min(5, importance))
 
         # Validate evidence quotes against the actual extracted PDF.
-        # Ignore all proposed evidence when verification itself failed.
+        # Ignore proposed evidence when verification itself failed.
         validated_evidence = []
         raw_evidence = result.get("evidence", [])
 
@@ -280,46 +287,52 @@ def run_audit_pipeline(answer, pdf_chunks, total_pages, progress_callback=None, 
         total_pages=total_pages,
     )
 
-    update("Audit complete", 100)
+    update("Building additional audit insights", 90)
 
+    # Build the hallucination heatmap.
     try:
-    heatmap = build_heatmap(final_claims)
-except Exception:
-    logger.exception("Could not build the hallucination heatmap")
-    heatmap = []
+        heatmap = build_heatmap(final_claims)
+    except Exception:
+        logger.exception("Could not build the hallucination heatmap")
+        heatmap = []
 
-try:
-    source_quality = assess_source_quality(
-        final_claims,
-        pdf_chunks,
-    )
-except Exception:
-    logger.exception("Could not assess source quality")
-    source_quality = {
-        "assessment_type": "unavailable",
-        "issues": ["Source-quality assessment failed."],
-        "limitations": [],
-    }
-
-result = {
-    "overall": overall,
-    "claims": final_claims,
-    "heatmap": heatmap,
-    "source_quality": source_quality,
-}
-
-if include_corrected_answer:
+    # Assess source quality.
     try:
-        result["corrected_answer"] = generate_corrected_answer(
-            original_answer=answer,
-            claims=final_claims,
+        source_quality = assess_source_quality(
+            final_claims,
+            pdf_chunks,
         )
     except Exception:
-        logger.exception("Could not generate a corrected answer")
-        result["corrected_answer"] = {
-            "corrected_answer": None,
-            "status": "failed",
-            "message": "The corrected answer could not be generated.",
+        logger.exception("Could not assess source quality")
+        source_quality = {
+            "assessment_type": "unavailable",
+            "issues": ["Source-quality assessment failed."],
+            "limitations": [],
         }
 
-return result
+    # Construct the final result.
+    result = {
+        "overall": overall,
+        "claims": final_claims,
+        "heatmap": heatmap,
+        "source_quality": source_quality,
+    }
+
+    # Optionally generate a corrected answer.
+    if include_corrected_answer:
+        try:
+            result["corrected_answer"] = generate_corrected_answer(
+                original_answer=answer,
+                claims=final_claims,
+            )
+        except Exception:
+            logger.exception("Could not generate a corrected answer")
+            result["corrected_answer"] = {
+                "corrected_answer": None,
+                "status": "failed",
+                "message": "The corrected answer could not be generated.",
+            }
+
+    update("Audit complete", 100)
+
+    return result
