@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+﻿import { useEffect, useRef, useState } from 'react'
 import './App.css'
 
 const sampleAnswer = 'The study found that regular walking can improve cardiovascular health. Participants who walked for at least 30 minutes a day had a 20% lower risk of heart disease, and the benefits were seen across all age groups.'
@@ -95,7 +95,7 @@ function verdictTone(verdict) {
   const value = String(verdict || '').toLowerCase()
   if (/support|verified|true|correct/.test(value)) return 'verdict-positive'
   if (/contradict|false|incorrect|unsupported/.test(value)) return 'verdict-negative'
-  if (/ambiguous|unclear|partial|mixed/.test(value)) return 'verdict-caution'
+  if (/ambiguous|unclear|partial|mixed|insufficient|inconclusive/.test(value)) return 'verdict-caution'
   return ''
 }
 
@@ -119,11 +119,17 @@ function App() {
   const isDemo = auditData?.demo_mode === true || auditData?.demo === true || auditData?.mode === 'demo' || auditData?.llm === 'fallback'
   const auditClaims = Array.isArray(auditData?.claims) ? auditData.claims.filter((claim) => claim && typeof claim === 'object') : []
   const failedClaims = auditClaims.filter(hasClaimError)
-  const verifiedClaims = auditClaims.filter((claim) => {
-  const verdict = String(claim.verdict || '').trim().toLowerCase()
-  return !hasClaimError(claim) &&
-    ['supported', 'contradicted'].includes(verdict)
-})
+  const verifiedClaims = auditClaims.filter((claim) => !hasClaimError(claim))
+  const verdictCounts = auditClaims.reduce((counts, claim) => {
+    const verdict = String(claim.verdict || '').trim().toLowerCase()
+    if (Object.prototype.hasOwnProperty.call(counts, verdict)) counts[verdict] += 1
+    return counts
+  }, {
+    supported: 0,
+    contradicted: 0,
+    insufficient: 0,
+    ambiguous: 0,
+  })
   const allClaimsFailed = auditClaims.length > 0 && failedClaims.length === auditClaims.length
   const hasPartialClaimFailures = failedClaims.length > 0 && !allClaimsFailed
   const quotaFailure = failedClaims.some(isProviderQuotaError)
@@ -256,11 +262,7 @@ function App() {
       }
       const responseClaims = Array.isArray(body.claims) ? body.claims.filter((claim) => claim && typeof claim === 'object') : []
       const responseFailedClaims = responseClaims.filter(hasClaimError)
-      const responseVerifiedClaims = responseClaims.filter((claim) => {
-        const verdict = String(claim.verdict || '').trim().toLowerCase()
-        return !hasClaimError(claim) &&
-          ['supported', 'contradicted'].includes(verdict)
-      })
+      const responseVerifiedClaims = responseClaims.filter((claim) => !hasClaimError(claim))
       const responseHasQuotaFailure = responseFailedClaims.some(isProviderQuotaError)
       const firstClaim = responseClaims.find((claim) => !hasClaimError(claim)) || responseClaims[0]
       setSelectedClaimKey(firstClaim ? claimKey(firstClaim, responseClaims.indexOf(firstClaim)) : '')
@@ -401,7 +403,7 @@ function App() {
             : hasPartialClaimFailures
               ? <div className="api-notice" role="status"><span className="notice-icon"><Icon name="book" size={18} /></span><span><strong>Some claims were not verified</strong><small>{quotaFailure ? 'The backend AI provider quota or rate limit was reached. Failed claims are excluded from verified results.' : 'Failed claims are marked Not verified and excluded from verified results.'}</small></span></div>
               : <div className="api-notice" role="status"><span className="notice-icon"><Icon name="book" size={18} /></span><span><strong>{isDemo ? 'Demo audit response' : 'Audit results received'}</strong><small>{isDemo ? 'The backend reported demo mode. ' : ''}{verifiedClaims.length} claim{verifiedClaims.length === 1 ? '' : 's'} returned without verification errors.</small></span></div>)}
-          <div className="analysis-heading"><div><span className="section-kicker">02 / INVESTIGATION</span><h2>What the source supports.</h2></div><span className="analysis-locked"><Icon name="shield" size={15} />{auditState === 'success' && auditClaims.length > 0 ? allClaimsFailed ? 'Verification unavailable' : `${verifiedClaims.length} verified · ${failedClaims.length} not verified` : 'Awaiting submission'}</span></div>
+          <div className="analysis-heading"><div><span className="section-kicker">02 / INVESTIGATION</span><h2>What the source supports.</h2></div><span className="analysis-locked"><Icon name="shield" size={15} />{auditState === 'success' && auditClaims.length > 0 ? allClaimsFailed ? 'Verification unavailable' : `${auditClaims.length} claims · ${verdictCounts.supported} supported · ${verdictCounts.contradicted} contradicted · ${verdictCounts.insufficient} insufficient · ${verdictCounts.ambiguous} ambiguous${failedClaims.length ? ` · ${failedClaims.length} errors` : ''}` : 'Awaiting submission'}</span></div>
           <div className="analysis-grid">
             <section className="analysis-panel source-viewer" aria-labelledby="source-viewer-heading">
               <div className="analysis-panel-head"><span className="panel-icon"><Icon name="file" size={18} /></span><div><h3 id="source-viewer-heading">Source document</h3><p>{pdf ? pdf.name : 'Your PDF will appear here'}</p></div>{pdf && <button className="replace-link viewer-change" type="button" onClick={() => inputRef.current?.click()}>Change</button>}</div>
@@ -427,7 +429,7 @@ function App() {
                   </button>
                 })}</div>
               </> : <div className="claim-empty"><div className="empty-trace" aria-hidden="true"><span className="trace-source"><Icon name="file" size={20} /></span><span className="trace-rule" /><span className="trace-claim">C</span><span className="trace-rule" /><span className="trace-evidence"><Icon name="book" size={18} /></span></div><strong>{auditState === 'success' ? 'No claims were returned' : 'Claims appear after an audit'}</strong><p>{auditState === 'success' ? 'The audit response contained no claim objects.' : 'Submit an answer with its source document to see each claim connected to its evidence.'}</p></div>}
-              <div className="map-legend"><span><i className="legend-dot supported" /> Supported</span><span><i className="legend-dot contradicted" /> Contradicted</span><span><i className="legend-dot unclear" /> Ambiguous</span></div>
+              <div className="map-legend"><span><i className="legend-dot supported" /> Supported</span><span><i className="legend-dot contradicted" /> Contradicted</span><span><i className="legend-dot insufficient" /> Insufficient</span><span><i className="legend-dot unclear" /> Ambiguous</span></div>
             </section>
             <section className="analysis-panel evidence-panel" aria-labelledby="evidence-heading">
               <div className="analysis-panel-head"><span className="panel-icon"><Icon name="book" size={18} /></span><div><h3 id="evidence-heading">Evidence inspector</h3><p>{selectedClaim ? 'Selected claim source material' : 'Evidence is tied to a selected claim'}</p></div></div>

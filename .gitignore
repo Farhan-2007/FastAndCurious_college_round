@@ -1,5 +1,4 @@
-
-# Python
+# Python caches and virtual environments
 __pycache__/
 *.py[cod]
 .venv/
@@ -11,14 +10,18 @@ venv/
 !.env.example
 !.env.example.*
 
-# Node.js
+# Node.js dependencies
 node_modules/
 
 # Build output
 dist/
 
-# Logs
+# Logs and generated output
+logs/
 *.log
 
-# VS Code
+# Editors and operating-system files
 .vscode/
+.idea/
+.DS_Store
+Thumbs.db
